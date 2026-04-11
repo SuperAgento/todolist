@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Study Journey - Tracker</title>
+
+    <!-- Thư viện React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Thư viện Google Calendar API (GAPI) và Google Identity Services (GSI) -->
+    <script async defer src="https://apis.google.com/js/api.js"></script>
+    <script async defer src="https://accounts.google.com/gsi/client"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                    },
+                    keyframes: {
+                        'slide-out-right': {
+                            '0%': { opacity: '1', transform: 'translateX(0)' },
+                            '100%': { opacity: '0', transform: 'translateX(30px)' },
+                        },
+                        'fade-in-up': {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    },
+                    animation: {
+                        'slide-out': 'slide-out-right 0.3s ease-in-out forwards',
+                        'fade-in': 'fade-in-up 0.4s ease-out forwards',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            -webkit-font-smoothing: antialiased;
+        }
+        .font-emphasis { font-weight: 800; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .spin-slow {
+            animation: spin 3s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, Fragment, useRef } = React;
+
+        // --- CẤU HÌNH API ---
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxzYN3l-d-cDM9aV7VXYvlushauo3Usol2NfTxKHK45jUU88NdfQWpDXXZJA8hFw-8b/exec";
+        const GOOGLE_CLIENT_ID = "190718844467-1a7705f91vorga5vv4cfrjfji3ltg8do.apps.googleusercontent.com";
+        const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+
+        const Icons = {
+            Sun: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>,
+            Calendar: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
+            History: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
+            CheckCircle: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            Plus: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+            Trash: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            ArrowRight: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>,
+            ArrowLeft: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+            AlertCircle: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
+            Droplets: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.8-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>,
+            Globe: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>,
+            Mic: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/></svg>,
+            Headphones: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>,
+            BookOpen: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+            PenTool: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>,
+            Folder: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
+            ArrowUpRight: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>,
+            Briefcase: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>,
+            Target: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+            Sparkles: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 9h4"/><path d="M3 5h4"/></svg>,
+            ChevronDown: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6"/></svg>,
+            Clock: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            Sync: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>,
+            LogOut: ({ className, size=24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+        };
+
+        const getLocalDateString = (date = new Date()) => {
+            const offset = date.getTimezoneOffset() * 60000;
+            const localISOTime = (new Date(date - offset)).toISOString().slice(0, -1);
+            return localISOTime.split('T')[0];
+        };
+
+        const todayStr = getLocalDateString();
+        const tomorrowStr = getLocalDateString(new Date(Date.now() + 86400000));
+        const yesterdayStr = getLocalDateString(new Date(Date.now() - 86400000));
+
+        const formatDateLabel = (dStr) => {
+            if (dStr === todayStr) return 'Hôm nay';
+            if (dStr === tomorrowStr) return 'Ngày mai';
+            if (dStr === yesterdayStr) return 'Hôm qua';
+            const parts = dStr.split('-');
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        };
+
+        const parseDateRange = (dateStr) => {
+            if (!dateStr) return { start: todayStr, end: todayStr };
+            if (dateStr.includes('|')) {
+                const [start, end] = dateStr.split('|');
+                return { start, end };
+            }
+            return { start: dateStr, end: dateStr };
+        };
+
+        const formatDisplayDate = (dateStr) => {
+            const { start, end } = parseDateRange(dateStr);
+            if (start === end) return formatDateLabel(start);
+
+            const formatShort = (d) => {
+                if (!d) return '';
+                const p = d.split('-');
+                return `${p[2]}/${p[1]}`;
+            };
+            return `${formatShort(start)} - ${formatShort(end)}`;
+        };
+
+        const categories = [
+            { name: 'Công việc chính (QII)', color: 'text-rose-700', bg: 'bg-rose-100', dot: 'bg-rose-500' },
+            { name: 'Học trên lớp', color: 'text-indigo-700', bg: 'bg-indigo-100', dot: 'bg-indigo-500' },
+            { name: 'Học cá nhân', color: 'text-cyan-700', bg: 'bg-cyan-100', dot: 'bg-cyan-500' },
+            { name: 'Công việc cá nhân', color: 'text-emerald-700', bg: 'bg-emerald-100', dot: 'bg-emerald-500' },
+        ];
+
+        const getCategoryStyle = (name) => {
+            return categories.find(c => c.name === name) || { color: 'text-slate-700', bg: 'bg-slate-100', dot: 'bg-slate-500' };
+        };
+
+        const topics = [
+            {
+                title: "IELTS", desc: "Chinh phục ngôn ngữ", color: "from-blue-500 to-cyan-400",
+                subSections: [
+                    { title: "General", icon: Icons.Globe, links: [ { name: "Tài nguyên lớp", url: "#" }, { name: "Thông tin chung", url: "#" } ] },
+                    { title: "Speaking", icon: Icons.Mic, links: [ { name: "Web Luyện Nói", url: "#" }, { name: "Sheet Tổng Hợp", url: "#" } ] },
+                    { title: "Listening", icon: Icons.Headphones, links: [ { name: "Lớp Luyện Listening", url: "#" }, { name: "Study4 Practice", url: "#" } ] },
+                    { title: "Reading", icon: Icons.BookOpen, links: [ { name: "Lớp Luyện Reading", url: "#" }, { name: "Study4 Practice", url: "#" } ] },
+                    { title: "Writing", icon: Icons.PenTool, links: [ { name: "Task 1 Guide", url: "#" }, { name: "Task 2 Guide", url: "#" } ] }
+                ]
+            },
+            {
+                title: "Marketing & Social", desc: "Chiến lược nội dung & Thương hiệu", color: "from-teal-500 to-emerald-400",
+                links: [ { name: "Khóa học MST", url: "#" }, { name: "Khóa học Nguyễn Cảnh", url: "#" }, { name: "Khóa học Markus", url: "#" }, { name: "Khóa học Tiến Quốc", url: "#" } ]
+            },
+            {
+                title: "Business Analysis", desc: "Phân tích dữ liệu & Kinh doanh", color: "from-indigo-500 to-purple-400",
+                links: [
+                    { name: "Tài liệu BA #1", url: "https://drive.google.com/drive/folders/1-MfpCq2TQjPsOheRo7CQKf0EI6sSHZ8r" },
+                    { name: "Tài liệu BA #2", url: "https://drive.google.com/drive/folders/1zDA5L6Jke7oqxW56HTqS9D1mAsb68ail" },
+                    { name: "Tài liệu BA #3", url: "https://drive.google.com/drive/folders/1W6KfKoGyKUm5iK12BOJCbAjRqMBWnq6z" },
+                    { name: "Tài liệu BA #4", url: "https://drive.google.com/drive/folders/11f2Lc_56M5IUKmhCU0hN-YvVtimT0xei" },
+                    { name: "Tài liệu BA #5", url: "https://drive.google.com/drive/folders/120R5JSabeL_g9oy4DMBzEm4bcLNr5oAI?usp=drive_link" }
+                ]
+            },
+            { title: "ThreeSome", desc: "Học tập cùng nhau tiến bộ", color: "from-pink-500 to-rose-400", isThreeSome: true },
+            {
+                title: "Lớp học", desc: "Chương trình học trên trường", color: "from-amber-500 to-orange-400",
+                isUniContainer: true,
+                subjects: ["Kế toán", "Hệ thống thông tin", "Excel", "Lãnh đạo"]
+            }
+        ];
+
+        const App = () => {
+            const [tasks, setTasks] = useState([]);
+            const [isDbLoading, setIsDbLoading] = useState(true);
+            const [syncStatus, setSyncStatus] = useState('idle');
+            const [activeTab, setActiveTab] = useState('today');
+
+            const [newTaskText, setNewTaskText] = useState('');
+            const [newTaskCat, setNewTaskCat] = useState('Học cá nhân');
+            const [newTaskStartDate, setNewTaskStartDate] = useState(todayStr);
+            const [newTaskEndDate, setNewTaskEndDate] = useState(todayStr);
+
+            const [animatingIds, setAnimatingIds] = useState([]);
+            const [expandedTopic, setExpandedTopic] = useState(null);
+
+            const [customLinks, setCustomLinks] = useState(() => {
+                const saved = localStorage.getItem('study_custom_links');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            const [addingLinkTo, setAddingLinkTo] = useState(null);
+            const [newLinkName, setNewLinkName] = useState('');
+            const [newLinkUrl, setNewLinkUrl] = useState('');
+
+            const [predefinedLinkStatus, setPredefinedLinkStatus] = useState(() => {
+                const saved = localStorage.getItem('study_predefined_links');
+                return saved ? JSON.parse(saved) : {};
+            });
+
+            const [exams, setExams] = useState(() => {
+                const saved = localStorage.getItem('study_exams');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [newExamName, setNewExamName] = useState('');
+            const [newExamDate, setNewExamDate] = useState('');
+            const [showAddExam, setShowAddExam] = useState(false);
+
+            const hasLoadedFromDb = useRef(false);
+
+            // Google Calendar State
+            const [gapiReady, setGapiReady] = useState(false);
+            const [isCalAuthorized, setIsCalAuthorized] = useState(false);
+            const [calendarEvents, setCalendarEvents] = useState([]);
+            const [isFetchingEvents, setIsFetchingEvents] = useState(false);
+
+            useEffect(() => {
+                localStorage.setItem('study_custom_links', JSON.stringify(customLinks));
+            }, [customLinks]);
+
+            useEffect(() => {
+                localStorage.setItem('study_predefined_links', JSON.stringify(predefinedLinkStatus));
+            }, [predefinedLinkStatus]);
+
+            useEffect(() => {
+                localStorage.setItem('study_exams', JSON.stringify(exams));
+            }, [exams]);
+
+            // Load Google APIs
+            useEffect(() => {
+                const initializeGapiClient = async () => {
+                    await window.gapi.client.init({
+                        discoveryDocs: [DISCOVERY_DOC],
+                    });
+                    setGapiReady(true);
+                };
+
+                const loadApis = () => {
+                    // Cài đặt Token Client cho OAuth2 (Implicit Flow, KHÔNG dùng client_secret ở frontend)
+                    window.tokenClient = window.google.accounts.oauth2.initTokenClient({
+                        client_id: GOOGLE_CLIENT_ID,
+                        scope: SCOPES,
+                        callback: (tokenResponse) => {
+                            if (tokenResponse && tokenResponse.access_token) {
+                                setIsCalAuthorized(true);
+                                fetchCalendarEvents();
+                            }
+                        },
+                    });
+
+                    // Khởi tạo GAPI client
+                    window.gapi.load('client', initializeGapiClient);
+                };
+
+                // Chờ script load xong
+                const checkScripts = setInterval(() => {
+                    if (window.gapi && window.google) {
+                        clearInterval(checkScripts);
+                        loadApis();
+                    }
+                }, 100);
+
+                return () => clearInterval(checkScripts);
+            }, []);
+
+            // Google Sheet Fetching
+            useEffect(() => {
+                const loadTasks = async () => {
+                    try {
+                        // Gọi GET mặc định, xử lý redirect (follow)
+                        const res = await fetch(SCRIPT_URL, {
+                            method: 'GET',
+                            redirect: 'follow'
+                        });
+                        const data = await res.json();
+
+                        if (Array.isArray(data)) {
+                            setTasks(data);
+                        } else {
+                            console.error("Dữ liệu trả về không hợp lệ:", data);
+                            setTasks([]);
+                        }
+                    } catch (err) {
+                        console.error("Lỗi khi tải dữ liệu từ Google Sheet:", err);
+                        setTasks([]);
+                    } finally {
+                        hasLoadedFromDb.current = true;
+                        setIsDbLoading(false);
+                    }
+                };
+
+                loadTasks();
+            }, []);
+
+            useEffect(() => {
+                if (isDbLoading || !hasLoadedFromDb.current) return;
+
+                const timeout = setTimeout(async () => {
+                    try {
+                        setSyncStatus('syncing');
+
+                        // Gửi POST dạng text/plain để tránh lỗi CORS Preflight (OPTIONS request) trên Apps Script
+                        const res = await fetch(SCRIPT_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'text/plain;charset=utf-8' 
+                            },
+                            body: JSON.stringify({
+                                action: 'write',
+                                tasks: tasks
+                            }),
+                            redirect: 'follow'
+                        });
+
+                        const data = await res.json();
+
+                        if (data.status === 'success') {
+                            setSyncStatus('saved');
+                            setTimeout(() => setSyncStatus('idle'), 2000);
+                        } else {
+                            setSyncStatus('error');
+                            console.error("Lỗi Apps Script:", data.message || data);
+                        }
+                    } catch (err) {
+                        setSyncStatus('error');
+                        console.error("Lỗi mạng khi lưu dữ liệu:", err);
+                    }
+                }, 1000);
+
+                return () => clearTimeout(timeout);
+            }, [tasks, isDbLoading]);
+
+            // Calendar Functions
+            const handleAuthClick = () => {
+                if (!window.tokenClient) return;
+                window.tokenClient.requestAccessToken({prompt: 'consent'});
+            };
+
+            const handleSignoutClick = () => {
+                const token = window.gapi.client.getToken();
+                if (token !== null) {
+                    window.google.accounts.oauth2.revoke(token.access_token);
+                    window.gapi.client.setToken('');
+                    setIsCalAuthorized(false);
+                    setCalendarEvents([]);
+                }
+            };
+
+            const fetchCalendarEvents = async () => {
+                if (!window.gapi.client.calendar) return;
+                setIsFetchingEvents(true);
+                try {
+                    const response = await window.gapi.client.calendar.events.list({
+                        'calendarId': 'primary',
+                        'timeMin': (new Date()).toISOString(),
+                        'showDeleted': false,
+                        'singleEvents': true,
+                        'maxResults': 10,
+                        'orderBy': 'startTime',
+                    });
+                    setCalendarEvents(response.result.items || []);
+                } catch (err) {
+                    console.error("Lỗi lấy lịch:", err);
+                } finally {
+                    setIsFetchingEvents(false);
+                }
+            };
+
+            const handleAddTask = (e) => {
+                e?.preventDefault();
+                if (!newTaskText.trim()) return;
+
+                const finalDate = newTaskStartDate === newTaskEndDate ? newTaskStartDate : `${newTaskStartDate}|${newTaskEndDate}`;
+                const newTask = {
+                    id: 't_' + Date.now(),
+                    text: newTaskText.trim(),
+                    category: newTaskCat,
+                    date: finalDate,
+                    status: 'pending',
+                    completedAt: null
+                };
+
+                setTasks(prev => [...prev, newTask]);
+                setNewTaskText('');
+            };
+
+            const completeTask = (id) => {
+                setAnimatingIds(prev => [...prev, id]);
+                setTimeout(() => {
+                    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'completed', completedAt: Date.now() } : t));
+                    setAnimatingIds(prev => prev.filter(a => a !== id));
+                }, 300);
+            };
+
+            const deleteTask = (id) => {
+                if (confirm("Bạn có chắc chắn muốn xóa công việc này?")) {
+                    setTasks(prev => prev.filter(t => t.id !== id));
+                }
+            };
+
+            const moveTaskDate = (id, newStartStr) => {
+                setTasks(prev => prev.map(t => {
+                    if (t.id === id) {
+                        const { start, end } = parseDateRange(t.date);
+                        const startObj = new Date(start);
+                        const endObj = new Date(end);
+                        const diff = endObj - startObj;
+
+                        const newStartObj = new Date(newStartStr);
+                        const newEndObj = new Date(newStartObj.getTime() + diff);
+                        const newEndStr = getLocalDateString(newEndObj);
+
+                        const finalDate = newStartStr === newEndStr ? newStartStr : `${newStartStr}|${newEndStr}`;
+                        return { ...t, date: finalDate };
+                    }
+                    return t;
+                }));
+            };
+
+            const toggleTopic = (index) => setExpandedTopic(expandedTopic === index ? null : index);
+
+            const calculateDaysLeft = (dateStr) => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const target = new Date(dateStr);
+                target.setHours(0, 0, 0, 0);
+                const diffTime = target - today;
+                return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            };
+
+            const handleAddExam = () => {
+                if (!newExamName || !newExamDate) return;
+                setExams(prev => [...prev, { id: Date.now(), name: newExamName, date: newExamDate }].sort((a,b) => new Date(a.date) - new Date(b.date)));
+                setNewExamName('');
+                setNewExamDate('');
+                setShowAddExam(false);
+            };
+
+            const handleDeleteExam = (id) => {
+                if (confirm('Bạn muốn xóa lịch thi này?')) {
+                    setExams(prev => prev.filter(e => e.id !== id));
+                }
+            };
+
+            const handleAddCustomLink = (key) => {
+                if (!newLinkName) return;
+                setCustomLinks(prev => ({
+                    ...prev,
+                    [key]: [...(prev[key] || []), { name: newLinkName, url: newLinkUrl, completed: false }]
+                }));
+                setNewLinkName('');
+                setNewLinkUrl('');
+                setAddingLinkTo(null);
+            };
+
+            const toggleLinkCompletion = (key, index) => {
+                setCustomLinks(prev => {
+                    const newLinks = [...(prev[key] || [])];
+                    newLinks[index] = { ...newLinks[index], completed: !newLinks[index].completed };
+                    return { ...prev, [key]: newLinks };
+                });
+            };
+
+            const handleDeleteCustomLink = (key, index) => {
+                if (confirm('Bạn có chắc chắn muốn xóa tài liệu này?')) {
+                    setCustomLinks(prev => {
+                        const newLinks = [...(prev[key] || [])];
+                        newLinks.splice(index, 1);
+                        return { ...prev, [key]: newLinks };
+                    });
+                }
+            };
+
+            const togglePredefinedLink = (key) => {
+                setPredefinedLinkStatus(prev => ({ ...prev, [key]: !prev[key] }));
+            };
+
+            const getTopicProgress = (topic, idx) => {
+                let total = 0;
+                let completed = 0;
+
+                if (topic.isUniContainer) {
+                    topic.subjects.forEach(subj => {
+                        ['Trên lớp', 'Bổ sung'].forEach(cat => {
+                            const key = `${subj}_${cat}`;
+                            const links = customLinks[key] || [];
+                            total += links.length;
+                            completed += links.filter(l => l.completed).length;
+                        });
+                    });
+                } else if (topic.isThreeSome) {
+                    ['Mục tiêu học tập', 'Tài liệu & Nội dung'].forEach(cat => {
+                        const key = `ThreeSome_${cat}`;
+                        const links = customLinks[key] || [];
+                        total += links.length;
+                        completed += links.filter(l => l.completed).length;
+                    });
+                } else {
+                    if (topic.subSections) {
+                        topic.subSections.forEach((sub, sIdx) => {
+                            sub.links.forEach((link, lIdx) => {
+                                total++;
+                                if (predefinedLinkStatus[`topic_${idx}_sub_${sIdx}_link_${lIdx}`]) completed++;
+                            });
+                        });
+                    } else if (topic.links) {
+                        topic.links.forEach((link, lIdx) => {
+                            total++;
+                            if (predefinedLinkStatus[`topic_${idx}_link_${lIdx}`]) completed++;
+                        });
+                    }
+                }
+                return total === 0 ? 0 : Math.round((completed / total) * 100);
+            };
+
+            const pendingTasks = tasks.filter(t => t.status === 'pending');
+            const todayTasks = pendingTasks.filter(t => parseDateRange(t.date).start <= todayStr);
+            const upcomingTasks = pendingTasks.filter(t => parseDateRange(t.date).start > todayStr);
+            const completedTasks = tasks.filter(t => t.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+
+            const groupedUpcoming = upcomingTasks.reduce((acc, t) => {
+                const start = parseDateRange(t.date).start;
+                if (!acc[start]) acc[start] = [];
+                acc[start].push(t);
+                return acc;
+            }, {});
+
+            const groupedCompleted = completedTasks.reduce((acc, t) => {
+                const dStr = getLocalDateString(new Date(t.completedAt));
+                if (!acc[dStr]) acc[dStr] = [];
+                acc[dStr].push(t);
+                return acc;
+            }, {});
+
+            const renderTaskItem = (task) => {
+                const isAnimating = animatingIds.includes(task.id);
+                const catStyle = getCategoryStyle(task.category);
+
+                const { start, end } = parseDateRange(task.date);
+                const isOverdue = end < todayStr && task.status === 'pending';
+                const isMultiDay = start !== end;
+
+                const shouldShowDate = task.status === 'pending' && (start > todayStr || isMultiDay);
+
+                return (
+                    <div key={task.id} className={`group flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-white border transition-all ${isAnimating ? 'animate-slide-out border-emerald-200 bg-emerald-50 scale-95' : 'border-slate-200 hover:border-cyan-400 hover:shadow-md'}`}>
+                        {task.status === 'pending' ? (
+                            <button onClick={() => completeTask(task.id)} className="w-6 h-6 rounded-full border-2 border-slate-300 flex items-center justify-center hover:border-emerald-500 hover:bg-emerald-50 transition-colors flex-shrink-0">
+                                <Icons.CheckCircle size={14} className="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                        ) : (
+                            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                <Icons.CheckCircle size={14} className="text-emerald-600" />
+                            </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                            <p className={`font-medium truncate transition-colors ${task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                                {task.text}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1.5 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex-wrap">
+                                <span className={`px-2 py-0.5 rounded-md ${catStyle.bg} ${catStyle.color}`}>{task.category}</span>
+                                {isOverdue && <span className="text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md flex items-center gap-1"><Icons.AlertCircle size={10}/> Quá hạn</span>}
+                                {shouldShowDate && <span className="text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md flex items-center gap-1"><Icons.Calendar size={10}/> {formatDisplayDate(task.date)}</span>}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 opacity-0 md:opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            {task.status === 'pending' && start <= todayStr && (
+                                <button onClick={() => moveTaskDate(task.id, tomorrowStr)} title="Dời sang ngày mai" className="p-1.5 md:p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                    <Icons.ArrowRight size={16} />
+                                </button>
+                            )}
+                            {task.status === 'pending' && start > todayStr && (
+                                <button onClick={() => moveTaskDate(task.id, todayStr)} title="Làm hôm nay" className="p-1.5 md:p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                                    <Icons.ArrowLeft size={16} />
+                                </button>
+                            )}
+                            <button onClick={() => deleteTask(task.id)} title="Xóa" className="p-1.5 md:p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                                <Icons.Trash size={16} />
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen">
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] pointer-events-none"></div>
+
+                    <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 flex flex-col lg:flex-row gap-8 lg:gap-12 relative z-10">
+                        <div className="flex-1 w-full min-w-0">
+                            <header className="mb-8 md:mb-10">
+                                <h2 className="text-3xl md:text-5xl font-emphasis text-slate-800 mb-2 tracking-tight">Study Tracker</h2>
+                                <div className="flex items-center gap-3">
+                                    <p className="text-slate-500 font-medium flex items-center gap-2">
+                                        <Icons.Droplets className="w-5 h-5 text-cyan-500" /> Flow of Knowledge
+                                    </p>
+
+                                    <div className="h-6 flex items-center ml-2 border-l border-slate-300 pl-3">
+                                        {syncStatus === 'syncing' && <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Icons.Sync size={12} className="spin-slow" /> Đang lưu...</span>}
+                                        {syncStatus === 'saved' && <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 animate-fade-in"><Icons.CheckCircle size={12} /> Đã lưu DB</span>}
+                                        {syncStatus === 'error' && <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1.5"><Icons.AlertCircle size={12} /> Lỗi đồng bộ DB</span>}
+                                    </div>
+                                </div>
+                            </header>
+
+                            {isDbLoading ? (
+                                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
+                                    <div className="w-12 h-12 border-4 border-cyan-100 border-t-cyan-600 rounded-full animate-spin mb-4"></div>
+                                    <p className="text-slate-500 font-bold animate-pulse">Đang đồng bộ dữ liệu từ đám mây...</p>
+                                    <p className="text-slate-400 text-sm mt-1">Google Sheet Database</p>
+                                </div>
+                            ) : (
+                                <Fragment>
+                                    <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 mb-8 flex flex-col gap-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Bạn muốn học/làm gì tiếp theo?"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 transition-all text-slate-700"
+                                            value={newTaskText}
+                                            onChange={e => setNewTaskText(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && handleAddTask()}
+                                        />
+
+                                        <div className="flex flex-col lg:flex-row gap-2 w-full">
+                                            <select
+                                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-3 py-2.5 outline-none focus:border-cyan-500 text-sm flex-1 lg:flex-none cursor-pointer"
+                                                value={newTaskCat}
+                                                onChange={e => setNewTaskCat(e.target.value)}
+                                            >
+                                                {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                            </select>
+
+                                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 flex-1 lg:flex-none">
+                                                <input
+                                                    type="date"
+                                                    className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
+                                                    value={newTaskStartDate}
+                                                    onChange={e => {
+                                                        setNewTaskStartDate(e.target.value);
+                                                        if (e.target.value > newTaskEndDate) setNewTaskEndDate(e.target.value);
+                                                    }}
+                                                    title="Từ ngày"
+                                                />
+                                                <span className="text-slate-300">-</span>
+                                                <input
+                                                    type="date"
+                                                    className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
+                                                    value={newTaskEndDate}
+                                                    onChange={e => {
+                                                        setNewTaskEndDate(e.target.value);
+                                                        if (e.target.value < newTaskStartDate) setNewTaskStartDate(e.target.value);
+                                                    }}
+                                                    title="Đến ngày"
+                                                />
+                                            </div>
+
+                                            <button onClick={handleAddTask} className="bg-cyan-600 text-white rounded-xl px-4 py-2.5 font-bold hover:bg-cyan-700 transition-colors shadow-md shadow-cyan-500/30 flex items-center justify-center gap-1 w-full lg:w-auto">
+                                                <Icons.Plus size={18}/> Thêm
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2 md:gap-4 border-b border-slate-200 mb-6 overflow-x-auto pb-1 hide-scrollbar">
+                                        {[
+                                            { id: 'today', icon: Icons.Sun, label: 'Hôm nay', count: todayTasks.length },
+                                            { id: 'upcoming', icon: Icons.Calendar, label: 'Sắp tới', count: upcomingTasks.length },
+                                            { id: 'completed', icon: Icons.History, label: 'Đã hoàn thành', count: null }
+                                        ].map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setActiveTab(tab.id)}
+                                                className={`flex items-center gap-2 px-4 py-3 border-b-2 font-bold text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-cyan-600 text-cyan-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                            >
+                                                <tab.icon size={18} /> {tab.label}
+                                                {tab.count !== null && <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${activeTab === tab.id ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}>{tab.count}</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="min-h-[400px]">
+                                        {activeTab === 'today' && (
+                                            <div className="animate-fade-in space-y-3">
+                                                {todayTasks.length === 0 ? (
+                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                        <Icons.Sun className="mx-auto text-yellow-400 mb-4" size={48} />
+                                                        <p className="text-slate-600 font-bold text-lg">Hôm nay bạn chưa có lịch trình nào!</p>
+                                                        <p className="text-slate-400 mt-1">Hãy thêm công việc hoặc tận hưởng một ngày nghỉ ngơi.</p>
+                                                    </div>
+                                                ) : (
+                                                    todayTasks.map(renderTaskItem)
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {activeTab === 'upcoming' && (
+                                            <div className="animate-fade-in space-y-8">
+                                                {Object.keys(groupedUpcoming).length === 0 ? (
+                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                        <Icons.Calendar className="mx-auto text-indigo-400 mb-4" size={48} />
+                                                        <p className="text-slate-600 font-bold text-lg">Chưa có kế hoạch cho tương lai</p>
+                                                        <p className="text-slate-400 mt-1">Chuẩn bị trước sẽ giúp bạn chủ động hơn.</p>
+                                                    </div>
+                                                ) : (
+                                                    Object.keys(groupedUpcoming).sort().map(dateStr => (
+                                                        <div key={dateStr}>
+                                                            <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-indigo-100 pb-2">
+                                                                <Icons.Calendar size={16}/> {formatDateLabel(dateStr)}
+                                                            </h4>
+                                                            <div className="space-y-3">
+                                                                {groupedUpcoming[dateStr].map(renderTaskItem)}
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {activeTab === 'completed' && (
+                                            <div className="animate-fade-in space-y-8">
+                                                {Object.keys(groupedCompleted).length === 0 ? (
+                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                        <Icons.History className="mx-auto text-emerald-400 mb-4" size={48} />
+                                                        <p className="text-slate-600 font-bold text-lg">Chưa có ghi nhận hoàn thành</p>
+                                                    </div>
+                                                ) : (
+                                                    Object.keys(groupedCompleted).sort((a,b)=>b.localeCompare(a)).map(dateStr => (
+                                                        <div key={dateStr}>
+                                                            <h4 className="text-sm font-bold text-emerald-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-emerald-100 pb-2">
+                                                                <Icons.CheckCircle size={16}/> {formatDateLabel(dateStr)}
+                                                            </h4>
+                                                            <div className="space-y-3">
+                                                                {groupedCompleted[dateStr].map(renderTaskItem)}
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </Fragment>
+                            )}
+                        </div>
+
+                        <div className="w-full lg:w-[420px] flex-shrink-0 flex flex-col gap-6">
+                            
+                            {/* --- GOOGLE CALENDAR SECTION --- */}
+                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-blue-200 bg-blue-50/30 lg:mt-[90px]">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-emphasis text-slate-800 flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 48 48" className="text-blue-500"><path fill="#4285F4" d="M3 10.5C3 8.01 5.01 6 7.5 6h9v36h-9C5.01 42 3 39.99 3 37.5v-27z"/><path fill="#34A853" d="M31.5 6h9C42.99 6 45 8.01 45 10.5v27c0 2.49-2.01 4.5-4.5 4.5h-9V6z"/><path fill="#FBBC04" d="M16.5 6h15v36h-15z"/></svg> 
+                                        Lịch Google
+                                    </h3>
+                                    {isCalAuthorized && (
+                                        <button onClick={handleSignoutClick} title="Đăng xuất khỏi Google Calendar" className="text-slate-400 hover:text-rose-500 transition-colors">
+                                            <Icons.LogOut size={18} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {!isCalAuthorized ? (
+                                    <div className="text-center py-4 bg-white rounded-xl border border-slate-200">
+                                        <p className="text-sm text-slate-500 mb-3 px-4">Kết nối Google Calendar để xem các sự kiện sắp tới của bạn.</p>
+                                        <button 
+                                            onClick={handleAuthClick} 
+                                            disabled={!gapiReady}
+                                            className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-300 shadow-sm"
+                                        >
+                                            {gapiReady ? "Đăng nhập với Google" : "Đang tải API..."}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {isFetchingEvents ? (
+                                            <p className="text-sm text-slate-500 flex items-center gap-2 justify-center py-2"><Icons.Sync size={14} className="spin-slow" /> Đang lấy dữ liệu lịch...</p>
+                                        ) : calendarEvents.length === 0 ? (
+                                            <p className="text-sm text-slate-400 italic text-center py-2">Không có sự kiện nào sắp tới.</p>
+                                        ) : (
+                                            calendarEvents.map(event => {
+                                                const start = event.start.dateTime || event.start.date;
+                                                const dateObj = new Date(start);
+                                                return (
+                                                    <div key={event.id} className="flex items-start gap-3 p-3 rounded-xl border bg-white border-blue-100 shadow-sm hover:border-blue-300 transition-colors">
+                                                        <div className="bg-blue-100 text-blue-700 font-black rounded-lg w-12 h-12 flex flex-col items-center justify-center flex-shrink-0">
+                                                            <span className="text-xs uppercase tracking-widest">{dateObj.toLocaleString('vi-VN', { month: 'short' })}</span>
+                                                            <span className="text-lg leading-none">{dateObj.getDate()}</span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h4 className="text-sm font-bold text-slate-700 truncate">{event.summary || "Sự kiện không tên"}</h4>
+                                                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                                                <Icons.Clock size={12}/> 
+                                                                {event.start.dateTime 
+                                                                    ? dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute:'2-digit' }) 
+                                                                    : "Cả ngày"}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                        <button onClick={fetchCalendarEvents} className="w-full text-xs font-bold text-blue-600 hover:text-blue-800 text-center py-1 mt-2">
+                                            Làm mới lịch
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* --- MANUAL EXAMS SECTION --- */}
+                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-emphasis text-slate-800 flex items-center gap-2">
+                                        <Icons.Clock className="text-rose-500" /> Lịch thi & Kiểm tra
+                                    </h3>
+                                    <button onClick={() => setShowAddExam(!showAddExam)} className="text-xs bg-rose-50 text-rose-600 font-bold px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors">
+                                        + Thêm
+                                    </button>
+                                </div>
+
+                                {showAddExam && (
+                                    <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-2">
+                                        <input type="text" placeholder="Tên môn thi / kiểm tra..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamName} onChange={e => setNewExamName(e.target.value)} />
+                                        <input type="date" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamDate} onChange={e => setNewExamDate(e.target.value)} />
+                                        <div className="flex justify-end gap-2 mt-1">
+                                            <button onClick={() => setShowAddExam(false)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded">Hủy</button>
+                                            <button onClick={handleAddExam} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors shadow-sm">Lưu</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3">
+                                    {exams.length === 0 ? (
+                                        <p className="text-sm text-slate-400 italic text-center py-4">Chưa có lịch thi nào được lên.</p>
+                                    ) : (
+                                        exams.map(exam => {
+                                            const daysLeft = calculateDaysLeft(exam.date);
+                                            const isUrgent = daysLeft >= 0 && daysLeft <= 3;
+                                            const isPast = daysLeft < 0;
+                                            return (
+                                                <div key={exam.id} className={`flex items-center justify-between p-3 rounded-xl border ${isUrgent ? 'bg-rose-50 border-rose-200' : isPast ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'} group relative`}>
+                                                    <div className="flex-1 min-w-0 pr-2">
+                                                        <h4 className={`text-sm font-bold truncate ${isUrgent ? 'text-rose-700' : 'text-slate-700'}`}>{exam.name}</h4>
+                                                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5"><Icons.Calendar size={12}/> {formatDateLabel(exam.date)}</p>
+                                                    </div>
+                                                    <div className="flex flex-col items-end">
+                                                        {isPast ? (
+                                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Đã qua</span>
+                                                        ) : (
+                                                            <div className="text-right">
+                                                                <span className={`text-xl font-black ${isUrgent ? 'text-rose-600' : 'text-cyan-600'}`}>{daysLeft}</span>
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Ngày</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <button onClick={() => handleDeleteExam(exam.id)} className="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 shadow-sm opacity-0 group-hover:opacity-100 transition-all">
+                                                        <Icons.Trash size={12}/>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            <h3 className="text-2xl font-emphasis text-slate-800 flex items-center gap-2 mb-2 mt-4">
+                                <Icons.Folder className="text-cyan-600" /> Tài liệu học tập
+                            </h3>
+
+                            <div className="space-y-5">
+                                {topics.map((topic, idx) => {
+                                    const progress = getTopicProgress(topic, idx);
+
+                                    return (
+                                        <div key={idx} className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-200 transition-all duration-300 group ${expandedTopic === idx ? 'ring-2 ring-cyan-500/50 shadow-md' : 'hover:border-cyan-300 hover:shadow-md cursor-pointer'}`} onClick={() => expandedTopic !== idx && toggleTopic(idx)}>
+                                            <div className="flex justify-between items-end mb-4">
+                                                <div className="pr-4">
+                                                    <h3 className={`text-xl font-bold font-emphasis flex items-center gap-2 ${expandedTopic === idx ? 'text-cyan-700' : 'text-slate-800 group-hover:text-cyan-700'}`}>
+                                                        {topic.title}
+                                                    </h3>
+                                                    <p className="text-slate-500 text-sm mt-1 leading-snug">{topic.desc}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                <div className={`h-full bg-gradient-to-r ${topic.color} rounded-full opacity-90 transition-all duration-1000`} style={{ width: `${progress}%` }}></div>
+                                            </div>
+
+                                            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expandedTopic === idx ? 'max-h-[1500px] opacity-100 mt-5 pt-5 border-t border-slate-100' : 'max-h-0 opacity-0 mt-0 pt-0 border-transparent'}`}>
+                                                {topic.subSections && (
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {topic.subSections.map((sub, sIdx) => (
+                                                            <div key={sIdx} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                                                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                                    <sub.icon size={16} className="text-cyan-600" /> {sub.title}
+                                                                </h4>
+                                                                <div className="space-y-2">
+                                                                    {sub.links.map((link, lIdx) => {
+                                                                        const statusKey = `topic_${idx}_sub_${sIdx}_link_${lIdx}`;
+                                                                        const isCompleted = predefinedLinkStatus[statusKey] || false;
+                                                                        return (
+                                                                            <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                <button onClick={() => togglePredefinedLink(statusKey)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                    {isCompleted && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                </button>
+                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                    {link.name}
+                                                                                </a>
+                                                                                <Icons.ArrowUpRight size={14} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {topic.links && !topic.subSections && (
+                                                    <div className="space-y-2">
+                                                        {topic.links.map((link, lIdx) => {
+                                                            const statusKey = `topic_${idx}_link_${lIdx}`;
+                                                            const isCompleted = predefinedLinkStatus[statusKey] || false;
+                                                            return (
+                                                                <div key={lIdx} className={`flex items-center gap-3 p-3 rounded-xl border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-slate-50 border-slate-100 hover:border-cyan-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                    <button onClick={() => togglePredefinedLink(statusKey)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                        {isCompleted && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                    </button>
+                                                                    <Icons.Folder size={18} className={`flex-shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400 group-hover/link:text-cyan-500'}`} />
+                                                                    <a href={link.url || link} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-700 hover:text-cyan-700'}`}>
+                                                                        {link.name || `Tài liệu học tập #${lIdx + 1}`}
+                                                                    </a>
+                                                                    <Icons.ArrowUpRight size={16} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {topic.isThreeSome && (
+                                                    <div className="mt-6 pt-4 border-t border-rose-100 animate-fade-in-down space-y-4">
+                                                        <div className="bg-rose-50/80 rounded-xl overflow-hidden border border-rose-200">
+                                                            <div className="px-4 py-3 bg-rose-100/50 border-b border-rose-200 flex items-center gap-2">
+                                                                <Icons.Target size={18} className="text-rose-600"/>
+                                                                <h4 className="font-bold text-rose-800 text-sm">Nội dung & Mục tiêu (Tự định nghĩa)</h4>
+                                                            </div>
+                                                            <div className="p-4 space-y-4">
+                                                                {['Mục tiêu học tập', 'Tài liệu & Nội dung'].map(cat => {
+                                                                    const key = `ThreeSome_${cat}`;
+                                                                    const links = customLinks[key] || [];
+                                                                    return (
+                                                                        <div key={cat} className="bg-white rounded-xl p-3 border border-rose-100 shadow-sm">
+                                                                            <div className="flex justify-between items-center mb-3">
+                                                                                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+                                                                                    {cat === 'Mục tiêu học tập' ? <Icons.Target size={14} className="text-rose-500"/> : <Icons.BookOpen size={14} className="text-rose-500"/>}
+                                                                                    {cat}
+                                                                               </h4>
+                                                                                <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-rose-600 hover:text-rose-700 font-bold px-2 py-1 bg-rose-50 rounded hover:bg-rose-100 transition-colors">
+                                                                                    + Thêm
+                                                                                </button>
+                                                                            </div>
+
+                                                                            <div className="space-y-2">
+                                                                                {links.map((link, lIdx) => (
+                                                                                    <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                        <button onClick={() => toggleLinkCompletion(key, lIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                            {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                        </button>
+                                                                                        {link.url ? (
+                                                                                            <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-rose-600'}`}>
+                                                                                                {link.name}
+                                                                                            </a>
+                                                                                        ) : (
+                                                                                            <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                                                                                {link.name}
+                                                                                            </span>
+                                                                                        )}
+                                                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, lIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity">
+                                                                                            <Icons.Trash size={14}/>
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ))}
+                                                                                {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có nội dung nào.</p>}
+                                                                            </div>
+
+                                                                            {addingLinkTo === key && (
+                                                                                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-rose-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                                                                                    <input type="text" placeholder={cat === 'Mục tiêu học tập' ? "Nhập mục tiêu..." : "Tên tài liệu / nội dung..."} className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                                    {cat === 'Tài liệu & Nội dung' && (
+                                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                    )}
+                                                                                    <div className="flex gap-2 justify-end mt-1">
+                                                                                        <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
+                                                                                        <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors">Lưu lại</button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {topic.isUniContainer && (
+                                                    <div className="mt-6 pt-4 border-t border-slate-100 animate-fade-in-down space-y-4">
+                                                        {topic.subjects.map(subject => (
+                                                            <div key={subject} className="bg-slate-50/80 rounded-xl overflow-hidden border border-slate-200">
+                                                                <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 flex items-center gap-2">
+                                                                    <Icons.BookOpen size={18} className="text-amber-600"/>
+                                                                    <h4 className="font-bold text-slate-800 text-sm">{subject}</h4>
+                                                                </div>
+                                                                <div className="p-4 space-y-4">
+                                                                    {['Trên lớp', 'Bổ sung'].map(cat => {
+                                                                        const key = `${subject}_${cat}`;
+                                                                        const links = customLinks[key] || [];
+                                                                        return (
+                                                                            <div key={cat} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                                                                <div className="flex justify-between items-center mb-3">
+                                                                                    <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+                                                                                        {cat === 'Trên lớp' ? <Icons.BookOpen size={14} className="text-cyan-600"/> : <Icons.Plus size={14} className="text-cyan-600"/>}
+                                                                                        {cat}
+                                                                                    </h4>
+                                                                                    <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-colors">
+                                                                                        + Thêm
+                                                                                    </button>
+                                                                                </div>
+
+                                                                                <div className="space-y-2">
+                                                                                    {links.map((link, lIdx) => (
+                                                                                        <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                            <button onClick={() => toggleLinkCompletion(key, lIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                                {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                            </button>
+                                                                                            {link.url ? (
+                                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                                    {link.name}
+                                                                                                </a>
+                                                                                            ) : (
+                                                                                                <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                                                                                    {link.name}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, lIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity">
+                                                                                                <Icons.Trash size={14}/>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có tài liệu nào.</p>}
+                                                                                </div>
+
+                                                                                {addingLinkTo === key && (
+                                                                                    <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-cyan-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                                                                                        <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                        <div className="flex gap-2 justify-end mt-1">
+                                                                                            <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
+                                                                                            <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-1.5 rounded hover:bg-cyan-700 transition-colors">Lưu lại</button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className="mt-4 flex justify-end">
+                                                    <button onClick={(e) => { e.stopPropagation(); toggleTopic(idx); }} className="text-xs font-bold text-slate-400 hover:text-slate-700 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+                                                        Đóng lại
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

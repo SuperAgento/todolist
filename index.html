@@ -114,7 +114,7 @@
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpljHYRUNXruU5a5x24lOoidrw9qC6x7Ub_TwAKVwzdG_9ATkyrr7U6S7azYlsNZYw/exec";
         const GOOGLE_CLIENT_ID = "190718844467-1a7705f91vorga5vv4cfrjfji3ltg8do.apps.googleusercontent.com";
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
-        const SCOPES = 'https://www.googleapis.com/auth/calendar.readonly';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 
         const Icons = {
             Sun: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></svg>,
@@ -490,9 +490,60 @@
                 return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             };
 
-            const handleAddExam = () => {
+            const handleAddExam = async () => {
                 if (!newExamName || !newExamDate) return;
-                setExams(prev => [...prev, { id: Date.now(), name: newExamName, date: newExamDate, time: newExamTime, location: newExamLocation }].sort((a, b) => new Date(a.date) - new Date(b.date)));
+
+                const newExam = { id: Date.now(), name: newExamName, date: newExamDate, time: newExamTime, location: newExamLocation };
+
+                if (isCalAuthorized && window.gapi && window.gapi.client.calendar) {
+                    try {
+                        const event = {
+                            summary: `[Lịch Thi] ${newExamName}`,
+                            location: newExamLocation,
+                        };
+
+                        if (newExamTime) {
+                            const startDateTime = new Date(`${newExamDate}T${newExamTime}:00`);
+                            const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // Mặc định 2 tiếng
+                            
+                            event.start = {
+                                dateTime: startDateTime.toISOString(),
+                                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                            };
+                            event.end = {
+                                dateTime: endDateTime.toISOString(),
+                                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                            };
+                        } else {
+                            const [y, m, d] = newExamDate.split('-');
+                            const nextDay = new Date(y, m - 1, d);
+                            nextDay.setDate(nextDay.getDate() + 1);
+                            
+                            event.start = {
+                                date: newExamDate,
+                                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                            };
+                            event.end = {
+                                date: getLocalDateString(nextDay),
+                                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                            };
+                        }
+
+                        const request = await window.gapi.client.calendar.events.insert({
+                            calendarId: 'primary',
+                            resource: event
+                        });
+                        
+                        newExam.gcalEventId = request.result.id;
+                        fetchCalendarEvents();
+                    } catch (err) {
+                        console.error('Lỗi khi thêm vào Google Calendar:', err);
+                    }
+                } else {
+                    alert('Lịch thi chỉ được lưu trên máy này. Đăng nhập Google Calendar ở "Lịch trong tuần" để đồng bộ tự động lên mọi thiết bị nhé!');
+                }
+
+                setExams(prev => [...prev, newExam].sort((a, b) => new Date(a.date) - new Date(b.date)));
                 setNewExamName('');
                 setNewExamDate('');
                 setNewExamTime('');
@@ -500,8 +551,20 @@
                 setShowAddExam(false);
             };
 
-            const handleDeleteExam = (id) => {
+            const handleDeleteExam = async (id) => {
                 if (confirm('Bạn muốn xóa lịch thi này?')) {
+                    const examToDelete = exams.find(e => e.id === id);
+                    if (examToDelete && examToDelete.gcalEventId && isCalAuthorized && window.gapi && window.gapi.client.calendar) {
+                        try {
+                            await window.gapi.client.calendar.events.delete({
+                                calendarId: 'primary',
+                                eventId: examToDelete.gcalEventId
+                            });
+                            fetchCalendarEvents();
+                        } catch (err) {
+                            console.error('Lỗi khi xóa sự kiện trên Google Calendar:', err);
+                        }
+                    }
                     setExams(prev => prev.filter(e => e.id !== id));
                 }
             };

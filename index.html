@@ -114,7 +114,7 @@
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpljHYRUNXruU5a5x24lOoidrw9qC6x7Ub_TwAKVwzdG_9ATkyrr7U6S7azYlsNZYw/exec";
         const GOOGLE_CLIENT_ID = "190718844467-1a7705f91vorga5vv4cfrjfji3ltg8do.apps.googleusercontent.com";
         const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
-        const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
+        const SCOPES = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly';
 
         const Icons = {
             Sun: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></svg>,
@@ -398,8 +398,8 @@
             // Calendar Functions
             const handleAuthClick = () => {
                 if (!window.tokenClient) return;
-                // Bỏ prompt: 'consent' để không hỏi lại nếu user đã cấp quyền
-                window.tokenClient.requestAccessToken({ prompt: '' });
+                // Bắt buộc hiện bảng chọn tài khoản và cấp lại quyền để update scope mới
+                window.tokenClient.requestAccessToken({ prompt: 'consent' });
             };
 
             const handleSignoutClick = () => {
@@ -417,20 +417,55 @@
                 setIsFetchingEvents(true);
                 try {
                     const { monday, sunday } = getWeekRange();
-                    const response = await window.gapi.client.calendar.events.list({
-                        'calendarId': 'primary',
-                        'timeMin': monday.toISOString(),
-                        'timeMax': sunday.toISOString(),
-                        'showDeleted': false,
-                        'singleEvents': true,
-                        'maxResults': 100,
-                        'orderBy': 'startTime',
+                    
+                    // Lấy danh sách các lịch
+                    const calendarListRes = await window.gapi.client.calendar.calendarList.list();
+                    const calendars = calendarListRes.result.items || [];
+                    
+                    let allEvents = [];
+                    
+                    // Fetch sự kiện từ tất cả các lịch được chọn
+                    const fetchPromises = calendars.filter(cal => cal.selected).map(async (cal) => {
+                        try {
+                            const response = await window.gapi.client.calendar.events.list({
+                                'calendarId': cal.id,
+                                'timeMin': monday.toISOString(),
+                                'timeMax': sunday.toISOString(),
+                                'showDeleted': false,
+                                'singleEvents': true,
+                                'maxResults': 100,
+                                'orderBy': 'startTime',
+                            });
+                            
+                            const items = response.result.items || [];
+                            items.forEach(item => {
+                                if (!item.colorId) item.backgroundColor = cal.backgroundColor;
+                                item.calendarSummary = cal.summary;
+                            });
+                            return items;
+                        } catch(e) {
+                            console.warn("Không thể lấy lịch từ:", cal.summary, e);
+                            return [];
+                        }
                     });
-                    setCalendarEvents(response.result.items || []);
+                    
+                    const results = await Promise.all(fetchPromises);
+                    results.forEach(items => {
+                        allEvents = allEvents.concat(items);
+                    });
+                    
+                    // Sắp xếp lại toàn bộ sự kiện theo thời gian bắt đầu
+                    allEvents.sort((a, b) => {
+                        const timeA = new Date(a.start.dateTime || a.start.date).getTime();
+                        const timeB = new Date(b.start.dateTime || b.start.date).getTime();
+                        return timeA - timeB;
+                    });
+                    
+                    setCalendarEvents(allEvents);
                 } catch (err) {
                     console.error("Lỗi lấy lịch:", err);
-                    if (err.status === 401) {
-                        // Token hết hạn, xóa phiên
+                    if (err.status === 401 || err.status === 403) {
+                        // Token hết hạn hoặc không đủ quyền, xóa phiên
                         window.gapi.client.setToken('');
                         localStorage.removeItem('gapi_token_info');
                         setIsCalAuthorized(false);
@@ -745,10 +780,13 @@
                                                             : `${new Date(ev.start.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})} - ${new Date(ev.end.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}`;
                                                             
                                                         return (
-                                                            <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-white shadow-sm hover:shadow text-sm transition-all group cursor-pointer">
-                                                                <span className={`text-[10px] font-bold ${color.text} flex items-center gap-1 mb-1`}>
-                                                                    <Icons.Clock size={10} /> 
-                                                                    {timeDisplay}
+                                                            <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-white shadow-sm hover:shadow text-sm transition-all group cursor-pointer" style={{ borderLeft: ev.backgroundColor ? `4px solid ${ev.backgroundColor}` : undefined }}>
+                                                                <span className={`text-[10px] font-bold ${color.text} flex items-center justify-between gap-1 mb-1`}>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <Icons.Clock size={10} /> 
+                                                                        {timeDisplay}
+                                                                    </div>
+                                                                    {ev.calendarSummary && <span className="opacity-60 truncate max-w-[80px]" title={ev.calendarSummary}>{ev.calendarSummary}</span>}
                                                                 </span>
                                                                 <p className="font-semibold text-slate-700 leading-snug line-clamp-2 md:line-clamp-3 text-xs md:text-sm group-hover:line-clamp-none transition-all" title={ev.summary}>{ev.summary || "Sự kiện"}</p>
                                                             </div>

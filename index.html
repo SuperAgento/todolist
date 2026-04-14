@@ -247,8 +247,16 @@
             // Google Calendar State
             const [gapiReady, setGapiReady] = useState(false);
             const [isCalAuthorized, setIsCalAuthorized] = useState(false);
-            const [calendarEvents, setCalendarEvents] = useState([]);
             const [isFetchingEvents, setIsFetchingEvents] = useState(false);
+            const [calendarEvents, setCalendarEvents] = useState(() => {
+                const saved = localStorage.getItem('study_calendar_events');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            // Persist calendar events to local storage so they remain visible even when token expires
+            useEffect(() => {
+                localStorage.setItem('study_calendar_events', JSON.stringify(calendarEvents));
+            }, [calendarEvents]);
 
             useEffect(() => {
                 localStorage.setItem('study_custom_links', JSON.stringify(customLinks));
@@ -273,13 +281,12 @@
                     if (savedToken) {
                         try {
                             const tokenObj = JSON.parse(savedToken);
-                            if (tokenObj.expires_at > Date.now() + 300000) {
-                                window.gapi.client.setToken({ access_token: tokenObj.access_token });
-                                setIsCalAuthorized(true);
-                            } else {
-                                localStorage.removeItem('gapi_token_info');
-                            }
-                        } catch (e) {}
+                            // Set token unconditionally if exists. If expired, API call will return 401 and handle auto logout.
+                            window.gapi.client.setToken({ access_token: tokenObj.access_token });
+                            setIsCalAuthorized(true);
+                        } catch (e) {
+                            localStorage.removeItem('gapi_token_info');
+                        }
                     }
 
                     setGapiReady(true);
@@ -293,8 +300,7 @@
                         callback: (tokenResponse) => {
                             if (tokenResponse && tokenResponse.access_token) {
                                 localStorage.setItem('gapi_token_info', JSON.stringify({
-                                    access_token: tokenResponse.access_token,
-                                    expires_at: Date.now() + tokenResponse.expires_in * 1000
+                                    access_token: tokenResponse.access_token
                                 }));
                                 setIsCalAuthorized(true);
                             }
@@ -392,7 +398,8 @@
             // Calendar Functions
             const handleAuthClick = () => {
                 if (!window.tokenClient) return;
-                window.tokenClient.requestAccessToken({ prompt: 'consent' });
+                // Bỏ prompt: 'consent' để không hỏi lại nếu user đã cấp quyền
+                window.tokenClient.requestAccessToken({ prompt: '' });
             };
 
             const handleSignoutClick = () => {
@@ -402,7 +409,6 @@
                     window.gapi.client.setToken('');
                     localStorage.removeItem('gapi_token_info');
                     setIsCalAuthorized(false);
-                    setCalendarEvents([]);
                 }
             };
 
@@ -423,6 +429,12 @@
                     setCalendarEvents(response.result.items || []);
                 } catch (err) {
                     console.error("Lỗi lấy lịch:", err);
+                    if (err.status === 401) {
+                        // Token hết hạn, xóa phiên
+                        window.gapi.client.setToken('');
+                        localStorage.removeItem('gapi_token_info');
+                        setIsCalAuthorized(false);
+                    }
                 } finally {
                     setIsFetchingEvents(false);
                 }
@@ -700,14 +712,14 @@
                                     </div>
                                 ) : (
                                     <button onClick={handleAuthClick} disabled={!gapiReady} className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-300 shadow-sm">
-                                        {gapiReady ? "Đăng nhập Google Calendar" : "Đang tải API..."}
+                                        {gapiReady ? "Làm mới / Đồng bộ Calendar" : "Đang tải API..."}
                                     </button>
                                 )}
                             </div>
                         </div>
 
-                        {isCalAuthorized && (
-                            <div className="grid grid-cols-1 md:grid-cols-7 gap-3 lg:gap-4 overflow-x-auto pb-2 hide-scrollbar">
+                        {/* Always show calendar view since events are cached */}
+                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3 lg:gap-4 overflow-x-auto pb-2 hide-scrollbar">
                                 {daysOfWeek.map((dayName, idx) => {
                                     const color = pastelColors[idx];
                                     const dayEvents = weekEvents[idx];
@@ -748,7 +760,6 @@
                                     )
                                 })}
                             </div>
-                        )}
                     </div>
                 );
             };

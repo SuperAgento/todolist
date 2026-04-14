@@ -754,7 +754,7 @@
                         </div>
 
                         {/* Always show calendar view since events are cached */}
-                        <div className="grid grid-cols-1 md:grid-cols-7 gap-3 lg:gap-4 overflow-x-auto pb-2 hide-scrollbar">
+                        <div className="flex flex-nowrap gap-3 lg:gap-4 overflow-x-auto pb-4 hide-scrollbar items-stretch h-full">
                                 {daysOfWeek.map((dayName, idx) => {
                                     const color = pastelColors[idx];
                                     const dayEvents = weekEvents[idx];
@@ -764,12 +764,12 @@
                                     const isToday = dateForCol.toDateString() === new Date().toDateString();
 
                                     return (
-                                        <div key={idx} className={`flex flex-col rounded-xl md:rounded-2xl border ${color.border} ${color.bg} overflow-hidden min-w-[140px] md:min-w-0 shadow-sm ${isToday ? 'ring-2 ring-offset-2 ' + color.ring : ''}`}>
-                                            <div className={`${color.headerBg} p-2 md:p-3 text-center border-b ${color.border}`}>
+                                        <div key={idx} className={`group flex flex-col rounded-xl md:rounded-2xl border ${color.border} ${color.bg} overflow-hidden shadow-sm transition-[width,opacity,box-shadow,transform] duration-300 ease-in-out cursor-pointer flex-shrink-0 ${isToday ? 'w-[220px] md:w-[280px] ring-2 ring-offset-2 opacity-100 ' + color.ring : 'w-[100px] md:w-[120px] hover:w-[220px] md:hover:w-[280px] opacity-80 hover:opacity-100 hover:shadow-md'}`}>
+                                            <div className={`${color.headerBg} p-2 md:p-3 text-center border-b ${color.border} transition-colors whitespace-nowrap overflow-hidden`}>
                                                 <h4 className={`font-bold text-sm md:text-base ${color.text} ${isToday ? 'font-black' : ''}`}>{dayName}</h4>
                                                 <p className={`text-[10px] md:text-xs ${color.text} opacity-80 mt-0.5`}>{dateForCol.toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'})}</p>
                                             </div>
-                                            <div className="p-2 flex-1 flex flex-col gap-2 min-h-[100px] max-h-[300px] overflow-y-auto hide-scrollbar">
+                                            <div className="p-2 flex-1 flex flex-col gap-2 min-h-[120px] max-h-[300px] overflow-y-auto overflow-x-hidden hide-scrollbar">
                                                 {dayEvents.length === 0 ? (
                                                     <p className="text-xs text-slate-400 italic text-center py-4 flex-1 flex items-center justify-center opacity-60">Trống</p>
                                                 ) : (
@@ -780,15 +780,15 @@
                                                             : `${new Date(ev.start.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})} - ${new Date(ev.end.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}`;
                                                             
                                                         return (
-                                                            <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-2 rounded-lg border border-white shadow-sm hover:shadow text-sm transition-all group cursor-pointer" style={{ borderLeft: ev.backgroundColor ? `4px solid ${ev.backgroundColor}` : undefined }}>
-                                                                <span className={`text-[10px] font-bold ${color.text} flex items-center justify-between gap-1 mb-1`}>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <Icons.Clock size={10} /> 
-                                                                        {timeDisplay}
+                                                            <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-1.5 md:p-2 rounded-lg border border-white shadow-sm transition-all group/ev cursor-pointer min-w-0" style={{ borderLeft: ev.backgroundColor ? `4px solid ${ev.backgroundColor}` : undefined }}>
+                                                                <span className={`text-[10px] font-bold ${color.text} flex items-center justify-between gap-1 mb-1 whitespace-nowrap overflow-hidden`}>
+                                                                    <div className="flex items-center gap-1 min-w-0">
+                                                                        <Icons.Clock size={10} className="flex-shrink-0" /> 
+                                                                        <span className="truncate">{timeDisplay}</span>
                                                                     </div>
-                                                                    {ev.calendarSummary && <span className="opacity-60 truncate max-w-[80px]" title={ev.calendarSummary}>{ev.calendarSummary}</span>}
+                                                                    {ev.calendarSummary && <span className="opacity-60 truncate min-w-[20px]" title={ev.calendarSummary}>{ev.calendarSummary}</span>}
                                                                 </span>
-                                                                <p className="font-semibold text-slate-700 leading-snug line-clamp-2 md:line-clamp-3 text-xs md:text-sm group-hover:line-clamp-none transition-all" title={ev.summary}>{ev.summary || "Sự kiện"}</p>
+                                                                <p className="font-semibold text-slate-700 leading-snug line-clamp-2 text-xs md:text-sm group-hover/ev:line-clamp-none transition-all break-words" title={ev.summary}>{ev.summary || "Sự kiện"}</p>
                                                             </div>
                                                         )
                                                     })

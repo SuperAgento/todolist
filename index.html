@@ -141,7 +141,8 @@
             Clock: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
             Sync: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 21v-5h5" /></svg>,
             LogOut: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></svg>,
-            MapPin: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+            MapPin: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>,
+            Grip: ({ className, size = 24 }) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
         };
 
         const getLocalDateString = (date = new Date()) => {
@@ -217,6 +218,7 @@
 
             const [animatingIds, setAnimatingIds] = useState([]);
             const [expandedTopic, setExpandedTopic] = useState(null);
+            const [draggedTaskId, setDraggedTaskId] = useState(null);
 
             const [customLinks, setCustomLinks] = useState(() => {
                 const saved = localStorage.getItem('study_custom_links');
@@ -526,6 +528,45 @@
                 }));
             };
 
+            // Drag and Drop Handlers
+            const handleDragStart = (e, task) => {
+                setDraggedTaskId(task.id);
+                e.dataTransfer.setData("taskId", task.id);
+                e.dataTransfer.effectAllowed = "move";
+                // Add a small delay to make the drag image look better (not include the reduced opacity)
+                setTimeout(() => {
+                    e.target.classList.add('opacity-40');
+                }, 0);
+            };
+
+            const handleDragEnd = (e) => {
+                e.target.classList.remove('opacity-40');
+                setDraggedTaskId(null);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+            };
+
+            const handleDrop = (e, targetTask) => {
+                e.preventDefault();
+                const sourceId = e.dataTransfer.getData("taskId");
+                if (!sourceId || sourceId === targetTask.id) return;
+
+                setTasks(prev => {
+                    const newTasks = [...prev];
+                    const sourceIndex = newTasks.findIndex(t => t.id === sourceId);
+                    const targetIndex = newTasks.findIndex(t => t.id === targetTask.id);
+                    
+                    if (sourceIndex > -1 && targetIndex > -1) {
+                        const [removed] = newTasks.splice(sourceIndex, 1);
+                        newTasks.splice(targetIndex, 0, removed);
+                    }
+                    return newTasks;
+                });
+            };
+
             const toggleTopic = (index) => setExpandedTopic(expandedTopic === index ? null : index);
 
             const calculateDaysLeft = (dateStr) => {
@@ -814,6 +855,7 @@
 
             const renderTaskItem = (task) => {
                 const isAnimating = animatingIds.includes(task.id);
+                const isDragging = draggedTaskId === task.id;
                 const catStyle = getCategoryStyle(task.category);
 
                 const { start, end } = parseDateRange(task.date);
@@ -823,7 +865,21 @@
                 const shouldShowDate = task.status === 'pending' && (start > todayStr || isMultiDay);
 
                 return (
-                    <div key={task.id} className={`group flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-white border transition-all ${isAnimating ? 'animate-slide-out border-emerald-200 bg-emerald-50 scale-95' : 'border-slate-200 hover:border-cyan-400 hover:shadow-md'}`}>
+                    <div 
+                        key={task.id} 
+                        draggable={task.status === 'pending'}
+                        onDragStart={(e) => handleDragStart(e, task)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, task)}
+                        className={`group flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl bg-white border transition-all ${isAnimating ? 'animate-slide-out border-emerald-200 bg-emerald-50 scale-95' : 'border-slate-200 hover:border-cyan-400 hover:shadow-md'} ${isDragging ? 'border-dashed border-cyan-400 bg-cyan-50/30' : ''}`}
+                    >
+                        {task.status === 'pending' && (
+                            <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors hidden md:block">
+                                <Icons.Grip size={18} />
+                            </div>
+                        )}
+
                         {task.status === 'pending' ? (
                             <button onClick={() => completeTask(task.id)} className="w-6 h-6 rounded-full border-2 border-slate-300 flex items-center justify-center hover:border-emerald-500 hover:bg-emerald-50 transition-colors flex-shrink-0">
                                 <Icons.CheckCircle size={14} className="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -187,6 +187,78 @@
         const categories = window.APP_DATA.categories;
         const topics = window.APP_DATA.topics;
 
+        const moodWeatherOptions = [
+            {
+                id: 'sunny',
+                emoji: '☀️',
+                title: 'Trời nắng',
+                label: 'Rất ổn',
+                desc: 'Năng lượng cao, phù hợp xử lý việc khó.',
+                bg: 'from-amber-50 via-orange-50 to-white',
+                border: 'border-amber-200',
+                text: 'text-amber-700',
+                chip: 'bg-amber-100 text-amber-700 border-amber-200'
+            },
+            {
+                id: 'cloudy',
+                emoji: '⛅',
+                title: 'Có mây',
+                label: 'Bình ổn',
+                desc: 'Tâm trạng ổn, nên giữ nhịp đều trong ngày.',
+                bg: 'from-sky-50 via-slate-50 to-white',
+                border: 'border-sky-200',
+                text: 'text-sky-700',
+                chip: 'bg-sky-100 text-sky-700 border-sky-200'
+            },
+            {
+                id: 'rainy',
+                emoji: '🌧️',
+                title: 'Mưa nhẹ',
+                label: 'Hơi mệt',
+                desc: 'Nên giảm tải, chia nhỏ việc và nghỉ ngắn.',
+                bg: 'from-blue-50 via-cyan-50 to-white',
+                border: 'border-blue-200',
+                text: 'text-blue-700',
+                chip: 'bg-blue-100 text-blue-700 border-blue-200'
+            },
+            {
+                id: 'storm',
+                emoji: '⛈️',
+                title: 'Giông bão',
+                label: 'Áp lực',
+                desc: 'Ưu tiên việc quan trọng nhất và bảo vệ năng lượng.',
+                bg: 'from-violet-50 via-slate-100 to-white',
+                border: 'border-violet-200',
+                text: 'text-violet-700',
+                chip: 'bg-violet-100 text-violet-700 border-violet-200'
+            },
+            {
+                id: 'rainbow',
+                emoji: '🌈',
+                title: 'Cầu vồng',
+                label: 'Có cảm hứng',
+                desc: 'Phù hợp sáng tạo, học sâu hoặc làm project cá nhân.',
+                bg: 'from-pink-50 via-yellow-50 to-cyan-50',
+                border: 'border-pink-200',
+                text: 'text-pink-700',
+                chip: 'bg-pink-100 text-pink-700 border-pink-200'
+            },
+            {
+                id: 'fog',
+                emoji: '🌫️',
+                title: 'Sương mù',
+                label: 'Mơ hồ',
+                desc: 'Cần viết ra điều đang vướng trước khi bắt đầu.',
+                bg: 'from-slate-50 via-zinc-50 to-white',
+                border: 'border-slate-200',
+                text: 'text-slate-700',
+                chip: 'bg-slate-100 text-slate-700 border-slate-200'
+            }
+        ];
+
+        const getMoodById = (id) => moodWeatherOptions.find(m => m.id === id) || moodWeatherOptions[1];
+
+
         const getCategoryStyle = (name) => {
             return categories.find(c => c.name === name) || { color: 'text-slate-700', bg: 'bg-slate-100', dot: 'bg-slate-500' };
         };
@@ -244,6 +316,20 @@
             const [newExamLocation, setNewExamLocation] = useState('');
             const [showAddExam, setShowAddExam] = useState(false);
 
+            const [moodLogs, setMoodLogs] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('study_mood_weather');
+                    return saved ? JSON.parse(saved) : {};
+                } catch (e) {
+                    return {};
+                }
+            });
+            const [showMoodPanel, setShowMoodPanel] = useState(false);
+            const [selectedMoodDate, setSelectedMoodDate] = useState(todayStr);
+            const [moodDraftNote, setMoodDraftNote] = useState('');
+            const [moodMonthAnchor, setMoodMonthAnchor] = useState(() => new Date(todayStr + 'T00:00:00'));
+
+
             const hasLoadedFromDb = useRef(false);
 
             // Google Calendar State
@@ -272,13 +358,18 @@
                 localStorage.setItem('study_exams', JSON.stringify(exams));
             }, [exams]);
 
+            useEffect(() => {
+                localStorage.setItem('study_mood_weather', JSON.stringify(moodLogs));
+            }, [moodLogs]);
+
+
             // Load Google APIs
             useEffect(() => {
                 const initializeGapiClient = async () => {
                     await window.gapi.client.init({
                         discoveryDocs: [DISCOVERY_DOC],
                     });
-                    
+
                     const savedToken = localStorage.getItem('gapi_token_info');
                     if (savedToken) {
                         try {
@@ -419,13 +510,13 @@
                 setIsFetchingEvents(true);
                 try {
                     const { monday, sunday } = getWeekRange();
-                    
+
                     // Lấy danh sách các lịch
                     const calendarListRes = await window.gapi.client.calendar.calendarList.list();
                     const calendars = calendarListRes.result.items || [];
-                    
+
                     let allEvents = [];
-                    
+
                     // Fetch sự kiện từ tất cả các lịch được chọn
                     const fetchPromises = calendars.filter(cal => cal.selected).map(async (cal) => {
                         try {
@@ -438,31 +529,31 @@
                                 'maxResults': 100,
                                 'orderBy': 'startTime',
                             });
-                            
+
                             const items = response.result.items || [];
                             items.forEach(item => {
                                 if (!item.colorId) item.backgroundColor = cal.backgroundColor;
                                 item.calendarSummary = cal.summary;
                             });
                             return items;
-                        } catch(e) {
+                        } catch (e) {
                             console.warn("Không thể lấy lịch từ:", cal.summary, e);
                             return [];
                         }
                     });
-                    
+
                     const results = await Promise.all(fetchPromises);
                     results.forEach(items => {
                         allEvents = allEvents.concat(items);
                     });
-                    
+
                     // Sắp xếp lại toàn bộ sự kiện theo thời gian bắt đầu
                     allEvents.sort((a, b) => {
                         const timeA = new Date(a.start.dateTime || a.start.date).getTime();
                         const timeB = new Date(b.start.dateTime || b.start.date).getTime();
                         return timeA - timeB;
                     });
-                    
+
                     setCalendarEvents(allEvents);
                 } catch (err) {
                     console.error("Lỗi lấy lịch:", err);
@@ -558,7 +649,7 @@
                     const newTasks = [...prev];
                     const sourceIndex = newTasks.findIndex(t => t.id === sourceId);
                     const targetIndex = newTasks.findIndex(t => t.id === targetTask.id);
-                    
+
                     if (sourceIndex > -1 && targetIndex > -1) {
                         const [removed] = newTasks.splice(sourceIndex, 1);
                         newTasks.splice(targetIndex, 0, removed);
@@ -593,7 +684,7 @@
                         if (newExamTime) {
                             const startDateTime = new Date(`${newExamDate}T${newExamTime}:00`);
                             const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // Mặc định 2 tiếng
-                            
+
                             event.start = {
                                 dateTime: startDateTime.toISOString(),
                                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -606,7 +697,7 @@
                             const [y, m, d] = newExamDate.split('-');
                             const nextDay = new Date(y, m - 1, d);
                             nextDay.setDate(nextDay.getDate() + 1);
-                            
+
                             event.start = {
                                 date: newExamDate,
                                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -621,7 +712,7 @@
                             calendarId: 'primary',
                             resource: event
                         });
-                        
+
                         newExam.gcalEventId = request.result.id;
                         fetchCalendarEvents();
                     } catch (err) {
@@ -757,6 +848,219 @@
                 return acc;
             }, {});
 
+            const saveMoodForDate = (dateStr, moodId, noteValue) => {
+                setMoodLogs(prev => ({
+                    ...prev,
+                    [dateStr]: {
+                        moodId,
+                        note: noteValue !== undefined ? noteValue : (prev[dateStr]?.note || ''),
+                        updatedAt: Date.now()
+                    }
+                }));
+            };
+
+            const openMoodPanel = () => {
+                setSelectedMoodDate(todayStr);
+                setMoodDraftNote(moodLogs[todayStr]?.note || '');
+                setMoodMonthAnchor(new Date(todayStr + 'T00:00:00'));
+                setShowMoodPanel(true);
+            };
+
+            const handleSelectMoodDate = (dateStr) => {
+                setSelectedMoodDate(dateStr);
+                setMoodDraftNote(moodLogs[dateStr]?.note || '');
+            };
+
+            const saveMoodNote = () => {
+                const currentMoodId = moodLogs[selectedMoodDate]?.moodId || 'cloudy';
+                saveMoodForDate(selectedMoodDate, currentMoodId, moodDraftNote);
+            };
+
+            const shiftMoodMonth = (direction) => {
+                setMoodMonthAnchor(prev => new Date(prev.getFullYear(), prev.getMonth() + direction, 1));
+            };
+
+            const buildMoodCalendarCells = () => {
+                const year = moodMonthAnchor.getFullYear();
+                const month = moodMonthAnchor.getMonth();
+                const firstDay = new Date(year, month, 1);
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const leadingBlankCount = (firstDay.getDay() + 6) % 7;
+                const cells = [];
+
+                for (let i = 0; i < leadingBlankCount; i++) cells.push(null);
+                for (let day = 1; day <= daysInMonth; day++) cells.push(getLocalDateString(new Date(year, month, day)));
+                while (cells.length % 7 !== 0) cells.push(null);
+
+                return cells;
+            };
+
+            const getMonthlyMoodStats = () => {
+                const year = moodMonthAnchor.getFullYear();
+                const month = moodMonthAnchor.getMonth();
+                const stats = moodWeatherOptions.map(m => ({ ...m, count: 0 }));
+
+                Object.entries(moodLogs).forEach(([dateStr, entry]) => {
+                    const date = new Date(dateStr + 'T00:00:00');
+                    if (date.getFullYear() === year && date.getMonth() === month) {
+                        const stat = stats.find(s => s.id === entry.moodId);
+                        if (stat) stat.count += 1;
+                    }
+                });
+
+                return stats;
+            };
+
+            const renderMoodWeatherSection = () => {
+                const todayEntry = moodLogs[todayStr] || {};
+                const todayMood = getMoodById(todayEntry.moodId || 'cloudy');
+
+                return (
+                    <div onClick={openMoodPanel} className={`relative overflow-hidden rounded-3xl border ${todayMood.border} bg-gradient-to-br ${todayMood.bg} p-5 md:p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group`}>
+                        <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/50 rounded-full blur-2xl group-hover:scale-125 transition-transform"></div>
+                        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-white/80 border border-white shadow-sm flex items-center justify-center text-4xl md:text-5xl">
+                                    {todayMood.emoji}
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400 mb-1">Mood Weather</p>
+                                    <h3 className="text-2xl md:text-3xl font-black text-slate-800">Thời tiết cảm xúc hôm nay</h3>
+                                    <p className={`mt-1 font-bold ${todayMood.text}`}>{todayMood.title} · {todayMood.label}</p>
+                                    <p className="text-sm text-slate-500 mt-1 max-w-2xl">{todayMood.desc}</p>
+                                    {todayEntry.note && <p className="mt-2 text-sm text-slate-600 bg-white/60 border border-white rounded-xl px-3 py-2 max-w-xl line-clamp-2">“{todayEntry.note}”</p>}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2 md:items-end">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Chọn nhanh hôm nay</p>
+                                <div className="flex flex-wrap md:justify-end gap-2 max-w-md">
+                                    {moodWeatherOptions.map(option => (
+                                        <button key={option.id} onClick={(e) => { e.stopPropagation(); saveMoodForDate(todayStr, option.id); }} className={`px-3 py-2 rounded-2xl border text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-sm ${todayMood.id === option.id ? option.chip + ' ring-2 ring-white' : 'bg-white/70 text-slate-500 border-white hover:text-slate-700'}`} title={option.desc}>
+                                            <span className="mr-1.5">{option.emoji}</span>{option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <span className="text-xs text-slate-400 font-semibold mt-1 flex items-center gap-1 md:justify-end">
+                                    <Icons.Calendar size={13} /> Bấm vào thẻ để xem lịch cảm xúc theo tháng
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderMoodCalendarPanel = () => {
+                if (!showMoodPanel) return null;
+
+                const cells = buildMoodCalendarCells();
+                const monthLabel = moodMonthAnchor.toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' });
+                const selectedEntry = moodLogs[selectedMoodDate] || {};
+                const selectedMood = getMoodById(selectedEntry.moodId || 'cloudy');
+                const monthStats = getMonthlyMoodStats();
+                const totalLoggedDays = monthStats.reduce((sum, item) => sum + item.count, 0);
+                const topMood = [...monthStats].sort((a, b) => b.count - a.count)[0];
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/45 backdrop-blur-sm" onClick={() => setShowMoodPanel(false)}>
+                        <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl border border-white animate-fade-in" onClick={e => e.stopPropagation()}>
+                            <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-100 p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-t-[2rem]">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-500 mb-1">Mood Calendar</p>
+                                    <h3 className="text-2xl md:text-3xl font-black text-slate-800">Lịch tâm trạng theo tháng</h3>
+                                    <p className="text-sm text-slate-500 mt-1">Theo dõi cảm xúc từng ngày để nhìn lại nhịp học tập và nghỉ ngơi.</p>
+                                </div>
+                                <button onClick={() => setShowMoodPanel(false)} className="self-start md:self-center px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors">Đóng</button>
+                            </div>
+
+                            <div className="p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[1.45fr_0.95fr] gap-6">
+                                <div className="bg-slate-50 rounded-3xl border border-slate-200 p-4 md:p-5">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <button onClick={() => shiftMoodMonth(-1)} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-cyan-600 hover:border-cyan-200 flex items-center justify-center transition-colors"><Icons.ArrowLeft size={18} /></button>
+                                        <div className="text-center">
+                                            <h4 className="font-black text-xl text-slate-800 capitalize">{monthLabel}</h4>
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{totalLoggedDays} ngày đã ghi nhận</p>
+                                        </div>
+                                        <button onClick={() => shiftMoodMonth(1)} className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-cyan-600 hover:border-cyan-200 flex items-center justify-center transition-colors"><Icons.ArrowRight size={18} /></button>
+                                    </div>
+
+                                    <div className="grid grid-cols-7 gap-2 mb-2">
+                                        {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(day => <div key={day} className="text-center text-xs font-black text-slate-400 uppercase py-1">{day}</div>)}
+                                    </div>
+                                    <div className="grid grid-cols-7 gap-2">
+                                        {cells.map((dateStr, idx) => {
+                                            if (!dateStr) return <div key={idx} className="aspect-square rounded-2xl bg-white/40"></div>;
+                                            const entry = moodLogs[dateStr];
+                                            const mood = getMoodById(entry?.moodId || null);
+                                            const isSelected = selectedMoodDate === dateStr;
+                                            const isTodayCell = dateStr === todayStr;
+                                            const dayNum = Number(dateStr.split('-')[2]);
+
+                                            return (
+                                                <button key={dateStr} onClick={() => handleSelectMoodDate(dateStr)} className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-1 transition-all hover:-translate-y-0.5 hover:shadow-sm ${isSelected ? 'bg-cyan-600 text-white border-cyan-600 ring-2 ring-cyan-200' : entry ? 'bg-white border-slate-200 hover:border-cyan-200' : 'bg-white/70 border-slate-100 hover:border-slate-200'}`}>
+                                                    <span className={`text-xs font-black ${isSelected ? 'text-white/80' : isTodayCell ? 'text-cyan-600' : 'text-slate-400'}`}>{dayNum}</span>
+                                                    <span className="text-xl leading-none">{entry ? mood.emoji : '·'}</span>
+                                                    {entry?.note && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-cyan-400'}`}></span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-5">
+                                    <div className={`rounded-3xl border ${selectedMood.border} bg-gradient-to-br ${selectedMood.bg} p-5`}>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-14 h-14 bg-white/80 rounded-2xl border border-white flex items-center justify-center text-3xl shadow-sm">{selectedMood.emoji}</div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{formatDateLabel(selectedMoodDate)}</p>
+                                                <h4 className="text-xl font-black text-slate-800">{selectedMood.title}</h4>
+                                                <p className={`text-sm font-bold ${selectedMood.text}`}>{selectedMood.label}</p>
+                                            </div>
+                                        </div>
+
+                                        <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Chọn cảm xúc cho ngày này</p>
+                                        <div className="grid grid-cols-2 gap-2 mb-4">
+                                            {moodWeatherOptions.map(option => (
+                                                <button key={option.id} onClick={() => saveMoodForDate(selectedMoodDate, option.id, moodLogs[selectedMoodDate]?.note || '')} className={`px-3 py-2 rounded-2xl border text-left font-bold transition-all hover:-translate-y-0.5 ${selectedMood.id === option.id ? option.chip + ' ring-2 ring-white' : 'bg-white/75 text-slate-500 border-white hover:text-slate-700'}`}>
+                                                    <span className="mr-2">{option.emoji}</span>{option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <label className="text-xs font-black uppercase tracking-widest text-slate-400 mb-2 block">Ghi chú ngắn</label>
+                                        <textarea value={moodDraftNote} onChange={e => setMoodDraftNote(e.target.value)} placeholder="Ví dụ: hôm nay học khá tốt, hơi mệt buổi tối..." className="w-full min-h-[96px] rounded-2xl border border-white bg-white/80 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-cyan-200 focus:border-cyan-300 resize-none"></textarea>
+                                        <div className="flex justify-end mt-3">
+                                            <button onClick={saveMoodNote} className="px-4 py-2 rounded-xl bg-cyan-600 text-white font-bold text-sm hover:bg-cyan-700 shadow-sm shadow-cyan-500/20 transition-colors">Lưu ghi chú</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm">
+                                        <h4 className="text-lg font-black text-slate-800 mb-3">Tổng quan tháng</h4>
+                                        <div className="space-y-2">
+                                            {monthStats.map(item => (
+                                                <div key={item.id} className="flex items-center justify-between text-sm">
+                                                    <span className="flex items-center gap-2 text-slate-600 font-bold"><span>{item.emoji}</span>{item.label}</span>
+                                                    <span className={`px-2 py-1 rounded-lg text-xs font-black border ${item.chip}`}>{item.count} ngày</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 p-3 rounded-2xl bg-slate-50 border border-slate-100 text-sm text-slate-500">
+                                            {totalLoggedDays > 0 ? (
+                                                <span>Tháng này mood xuất hiện nhiều nhất là <b className={topMood.text}>{topMood.emoji} {topMood.label}</b>. Dùng phần này để xem tháng nào bạn học ổn hơn hoặc dễ bị quá tải hơn.</span>
+                                            ) : (
+                                                <span>Chưa có dữ liệu trong tháng này. Hãy chọn cảm xúc cho từng ngày để bắt đầu theo dõi.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+
+
             const renderCalendarSection = () => {
                 const { monday } = getWeekRange();
                 const weekEvents = Array.from({ length: 7 }, () => []);
@@ -806,49 +1110,49 @@
 
                         {/* Always show calendar view since events are cached */}
                         <div className="flex flex-nowrap gap-3 lg:gap-4 overflow-x-auto pb-4 hide-scrollbar items-stretch h-full">
-                                {daysOfWeek.map((dayName, idx) => {
-                                    const color = pastelColors[idx];
-                                    const dayEvents = weekEvents[idx];
-                                    
-                                    const dateForCol = new Date(monday);
-                                    dateForCol.setDate(monday.getDate() + idx);
-                                    const isToday = dateForCol.toDateString() === new Date().toDateString();
+                            {daysOfWeek.map((dayName, idx) => {
+                                const color = pastelColors[idx];
+                                const dayEvents = weekEvents[idx];
 
-                                    return (
-                                        <div key={idx} className={`group flex flex-col rounded-xl md:rounded-2xl border ${color.border} ${color.bg} overflow-hidden shadow-sm transition-[width,opacity,box-shadow,transform] duration-300 ease-in-out cursor-pointer flex-shrink-0 ${isToday ? 'w-[220px] md:w-[280px] ring-2 ring-offset-2 opacity-100 ' + color.ring : 'w-[100px] md:w-[120px] hover:w-[220px] md:hover:w-[280px] opacity-80 hover:opacity-100 hover:shadow-md'}`}>
-                                            <div className={`${color.headerBg} p-2 md:p-3 text-center border-b ${color.border} transition-colors whitespace-nowrap overflow-hidden`}>
-                                                <h4 className={`font-bold text-sm md:text-base ${color.text} ${isToday ? 'font-black' : ''}`}>{dayName}</h4>
-                                                <p className={`text-[10px] md:text-xs ${color.text} opacity-80 mt-0.5`}>{dateForCol.toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'})}</p>
-                                            </div>
-                                            <div className="p-2 flex-1 flex flex-col gap-2 min-h-[120px] max-h-[300px] overflow-y-auto overflow-x-hidden hide-scrollbar">
-                                                {dayEvents.length === 0 ? (
-                                                    <p className="text-xs text-slate-400 italic text-center py-4 flex-1 flex items-center justify-center opacity-60">Trống</p>
-                                                ) : (
-                                                    dayEvents.map(ev => {
-                                                        const isAllDay = !ev.start.dateTime;
-                                                        const timeDisplay = isAllDay 
-                                                            ? 'Cả ngày' 
-                                                            : `${new Date(ev.start.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})} - ${new Date(ev.end.dateTime).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}`;
-                                                            
-                                                        return (
-                                                            <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-1.5 md:p-2 rounded-lg border border-white shadow-sm transition-all group/ev cursor-pointer min-w-0" style={{ borderLeft: ev.backgroundColor ? `4px solid ${ev.backgroundColor}` : undefined }}>
-                                                                <span className={`text-[10px] font-bold ${color.text} flex items-center justify-between gap-1 mb-1 whitespace-nowrap overflow-hidden`}>
-                                                                    <div className="flex items-center gap-1 min-w-0">
-                                                                        <Icons.Clock size={10} className="flex-shrink-0" /> 
-                                                                        <span className="truncate">{timeDisplay}</span>
-                                                                    </div>
-                                                                    {ev.calendarSummary && <span className="opacity-60 truncate min-w-[20px]" title={ev.calendarSummary}>{ev.calendarSummary}</span>}
-                                                                </span>
-                                                                <p className="font-semibold text-slate-700 leading-snug line-clamp-2 text-xs md:text-sm group-hover/ev:line-clamp-none transition-all break-words" title={ev.summary}>{ev.summary || "Sự kiện"}</p>
-                                                            </div>
-                                                        )
-                                                    })
-                                                )}
-                                            </div>
+                                const dateForCol = new Date(monday);
+                                dateForCol.setDate(monday.getDate() + idx);
+                                const isToday = dateForCol.toDateString() === new Date().toDateString();
+
+                                return (
+                                    <div key={idx} className={`group flex flex-col rounded-xl md:rounded-2xl border ${color.border} ${color.bg} overflow-hidden shadow-sm transition-[width,opacity,box-shadow,transform] duration-300 ease-in-out cursor-pointer flex-shrink-0 ${isToday ? 'w-[220px] md:w-[280px] ring-2 ring-offset-2 opacity-100 ' + color.ring : 'w-[100px] md:w-[120px] hover:w-[220px] md:hover:w-[280px] opacity-80 hover:opacity-100 hover:shadow-md'}`}>
+                                        <div className={`${color.headerBg} p-2 md:p-3 text-center border-b ${color.border} transition-colors whitespace-nowrap overflow-hidden`}>
+                                            <h4 className={`font-bold text-sm md:text-base ${color.text} ${isToday ? 'font-black' : ''}`}>{dayName}</h4>
+                                            <p className={`text-[10px] md:text-xs ${color.text} opacity-80 mt-0.5`}>{dateForCol.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</p>
                                         </div>
-                                    )
-                                })}
-                            </div>
+                                        <div className="p-2 flex-1 flex flex-col gap-2 min-h-[120px] max-h-[300px] overflow-y-auto overflow-x-hidden hide-scrollbar">
+                                            {dayEvents.length === 0 ? (
+                                                <p className="text-xs text-slate-400 italic text-center py-4 flex-1 flex items-center justify-center opacity-60">Trống</p>
+                                            ) : (
+                                                dayEvents.map(ev => {
+                                                    const isAllDay = !ev.start.dateTime;
+                                                    const timeDisplay = isAllDay
+                                                        ? 'Cả ngày'
+                                                        : `${new Date(ev.start.dateTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${new Date(ev.end.dateTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+
+                                                    return (
+                                                        <div key={ev.id} className="bg-white/80 backdrop-blur-sm p-1.5 md:p-2 rounded-lg border border-white shadow-sm transition-all group/ev cursor-pointer min-w-0" style={{ borderLeft: ev.backgroundColor ? `4px solid ${ev.backgroundColor}` : undefined }}>
+                                                            <span className={`text-[10px] font-bold ${color.text} flex items-center justify-between gap-1 mb-1 whitespace-nowrap overflow-hidden`}>
+                                                                <div className="flex items-center gap-1 min-w-0">
+                                                                    <Icons.Clock size={10} className="flex-shrink-0" />
+                                                                    <span className="truncate">{timeDisplay}</span>
+                                                                </div>
+                                                                {ev.calendarSummary && <span className="opacity-60 truncate min-w-[20px]" title={ev.calendarSummary}>{ev.calendarSummary}</span>}
+                                                            </span>
+                                                            <p className="font-semibold text-slate-700 leading-snug line-clamp-2 text-xs md:text-sm group-hover/ev:line-clamp-none transition-all break-words" title={ev.summary}>{ev.summary || "Sự kiện"}</p>
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
                     </div>
                 );
             };
@@ -865,8 +1169,8 @@
                 const shouldShowDate = task.status === 'pending' && (start > todayStr || isMultiDay);
 
                 return (
-                    <div 
-                        key={task.id} 
+                    <div
+                        key={task.id}
                         draggable={task.status === 'pending'}
                         onDragStart={(e) => handleDragStart(e, task)}
                         onDragEnd={handleDragEnd}
@@ -926,468 +1230,406 @@
 
                     <div className="max-w-7xl mx-auto px-4 py-8 md:py-12 flex flex-col gap-8 relative z-10">
                         <header className="mb-2">
-                                <h2 className="text-3xl md:text-5xl font-emphasis text-slate-800 mb-2 tracking-tight">Study Tracker</h2>
-                                <div className="flex items-center gap-3">
-                                    <p className="text-slate-500 font-medium flex items-center gap-2">
-                                        <Icons.Droplets className="w-5 h-5 text-cyan-500" /> Flow of Knowledge
-                                    </p>
+                            <h2 className="text-3xl md:text-5xl font-emphasis text-slate-800 mb-2 tracking-tight">Study Tracker</h2>
+                            <div className="flex items-center gap-3">
+                                <p className="text-slate-500 font-medium flex items-center gap-2">
+                                    <Icons.Droplets className="w-5 h-5 text-cyan-500" /> Flow of Knowledge
+                                </p>
 
-                                    <div className="h-6 flex items-center ml-2 border-l border-slate-300 pl-3">
-                                        {syncStatus === 'syncing' && <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Icons.Sync size={12} className="spin-slow" /> Đang lưu...</span>}
-                                        {syncStatus === 'saved' && <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 animate-fade-in"><Icons.CheckCircle size={12} /> Đã lưu DB</span>}
-                                        {syncStatus === 'error' && <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1.5"><Icons.AlertCircle size={12} /> Lỗi đồng bộ DB</span>}
-                                    </div>
-                                </div>
-                            </header>
-
-                            {renderCalendarSection()}
-
-                            <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
-                                <div className="flex-1 w-full min-w-0">
-                                    {isDbLoading ? (
-                                <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
-                                    <div className="w-12 h-12 border-4 border-cyan-100 border-t-cyan-600 rounded-full animate-spin mb-4"></div>
-                                    <p className="text-slate-500 font-bold animate-pulse">Đang đồng bộ dữ liệu từ đám mây...</p>
-                                    <p className="text-slate-400 text-sm mt-1">Google Sheet Database</p>
-                                </div>
-                            ) : (
-                                <Fragment>
-                                    <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 mb-8 flex flex-col gap-3">
-                                        <input
-                                            type="text"
-                                            placeholder="Bạn muốn học/làm gì tiếp theo?"
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 transition-all text-slate-700"
-                                            value={newTaskText}
-                                            onChange={e => setNewTaskText(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && handleAddTask()}
-                                        />
-
-                                        <div className="flex flex-col lg:flex-row gap-2 w-full">
-                                            <select
-                                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-3 py-2.5 outline-none focus:border-cyan-500 text-sm flex-1 lg:flex-none cursor-pointer"
-                                                value={newTaskCat}
-                                                onChange={e => setNewTaskCat(e.target.value)}
-                                            >
-                                                {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-                                            </select>
-
-                                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 flex-1 lg:flex-none">
-                                                <input
-                                                    type="date"
-                                                    className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
-                                                    value={newTaskStartDate}
-                                                    onChange={e => {
-                                                        setNewTaskStartDate(e.target.value);
-                                                        if (e.target.value > newTaskEndDate) setNewTaskEndDate(e.target.value);
-                                                    }}
-                                                    title="Từ ngày"
-                                                />
-                                                <span className="text-slate-300">-</span>
-                                                <input
-                                                    type="date"
-                                                    className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
-                                                    value={newTaskEndDate}
-                                                    onChange={e => {
-                                                        setNewTaskEndDate(e.target.value);
-                                                        if (e.target.value < newTaskStartDate) setNewTaskStartDate(e.target.value);
-                                                    }}
-                                                    title="Đến ngày"
-                                                />
-                                            </div>
-
-                                            <button onClick={handleAddTask} className="bg-cyan-600 text-white rounded-xl px-4 py-2.5 font-bold hover:bg-cyan-700 transition-colors shadow-md shadow-cyan-500/30 flex items-center justify-center gap-1 w-full lg:w-auto">
-                                                <Icons.Plus size={18} /> Thêm
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-2 md:gap-4 border-b border-slate-200 mb-6 overflow-x-auto pb-1 hide-scrollbar">
-                                        {[
-                                            { id: 'today', icon: Icons.Sun, label: 'Hôm nay', count: todayTasks.length },
-                                            { id: 'upcoming', icon: Icons.Calendar, label: 'Sắp tới', count: upcomingTasks.length },
-                                            { id: 'completed', icon: Icons.History, label: 'Đã hoàn thành', count: null }
-                                        ].map(tab => (
-                                            <button
-                                                key={tab.id}
-                                                onClick={() => setActiveTab(tab.id)}
-                                                className={`flex items-center gap-2 px-4 py-3 border-b-2 font-bold text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-cyan-600 text-cyan-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
-                                            >
-                                                <tab.icon size={18} /> {tab.label}
-                                                {tab.count !== null && <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${activeTab === tab.id ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}>{tab.count}</span>}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    <div className="min-h-[400px]">
-                                        {activeTab === 'today' && (
-                                            <div className="animate-fade-in space-y-3">
-                                                {todayTasks.length === 0 ? (
-                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
-                                                        <Icons.Sun className="mx-auto text-yellow-400 mb-4" size={48} />
-                                                        <p className="text-slate-600 font-bold text-lg">Hôm nay bạn chưa có lịch trình nào!</p>
-                                                        <p className="text-slate-400 mt-1">Hãy thêm công việc hoặc tận hưởng một ngày nghỉ ngơi.</p>
-                                                    </div>
-                                                ) : (
-                                                    todayTasks.map(renderTaskItem)
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {activeTab === 'upcoming' && (
-                                            <div className="animate-fade-in space-y-8">
-                                                {Object.keys(groupedUpcoming).length === 0 ? (
-                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
-                                                        <Icons.Calendar className="mx-auto text-indigo-400 mb-4" size={48} />
-                                                        <p className="text-slate-600 font-bold text-lg">Chưa có kế hoạch cho tương lai</p>
-                                                        <p className="text-slate-400 mt-1">Chuẩn bị trước sẽ giúp bạn chủ động hơn.</p>
-                                                    </div>
-                                                ) : (
-                                                    Object.keys(groupedUpcoming).sort().map(dateStr => (
-                                                        <div key={dateStr}>
-                                                            <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-indigo-100 pb-2">
-                                                                <Icons.Calendar size={16} /> {formatDateLabel(dateStr)}
-                                                            </h4>
-                                                            <div className="space-y-3">
-                                                                {groupedUpcoming[dateStr].map(renderTaskItem)}
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {activeTab === 'completed' && (
-                                            <div className="animate-fade-in space-y-8">
-                                                {Object.keys(groupedCompleted).length === 0 ? (
-                                                    <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
-                                                        <Icons.History className="mx-auto text-emerald-400 mb-4" size={48} />
-                                                        <p className="text-slate-600 font-bold text-lg">Chưa có ghi nhận hoàn thành</p>
-                                                    </div>
-                                                ) : (
-                                                    Object.keys(groupedCompleted).sort((a, b) => b.localeCompare(a)).map(dateStr => (
-                                                        <div key={dateStr}>
-                                                            <h4 className="text-sm font-bold text-emerald-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-emerald-100 pb-2">
-                                                                <Icons.CheckCircle size={16} /> {formatDateLabel(dateStr)}
-                                                            </h4>
-                                                            <div className="space-y-3">
-                                                                {groupedCompleted[dateStr].map(renderTaskItem)}
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </Fragment>
-                            )}
-                        </div>
-
-                        <div className="w-full lg:w-[420px] flex-shrink-0 flex flex-col gap-6">
-
-                            {/* --- MANUAL EXAMS SECTION --- */}
-                            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-xl font-emphasis text-slate-800 flex items-center gap-2">
-                                        <Icons.Clock className="text-rose-500" /> Lịch thi & Kiểm tra
-                                    </h3>
-                                    <button onClick={() => setShowAddExam(!showAddExam)} className="text-xs bg-rose-50 text-rose-600 font-bold px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors">
-                                        + Thêm
-                                    </button>
-                                </div>
-
-                                {showAddExam && (
-                                    <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-2">
-                                        <input type="text" placeholder="Tên môn thi / kiểm tra..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamName} onChange={e => setNewExamName(e.target.value)} />
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <input type="date" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamDate} onChange={e => setNewExamDate(e.target.value)} />
-                                            <input type="time" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamTime} onChange={e => setNewExamTime(e.target.value)} />
-                                        </div>
-                                        <input type="text" placeholder="Địa điểm thi (tùy chọn)..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamLocation} onChange={e => setNewExamLocation(e.target.value)} />
-                                        
-                                        <div className="flex justify-end gap-2 mt-1">
-                                            <button onClick={() => setShowAddExam(false)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded">Hủy</button>
-                                            <button onClick={handleAddExam} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors shadow-sm">Lưu</button>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="space-y-3">
-                                    {exams.length === 0 ? (
-                                        <p className="text-sm text-slate-400 italic text-center py-4">Chưa có lịch thi nào được lên.</p>
-                                    ) : (
-                                        exams.map(exam => {
-                                            const daysLeft = calculateDaysLeft(exam.date);
-                                            const isUrgent = daysLeft >= 0 && daysLeft <= 3;
-                                            const isPast = daysLeft < 0;
-                                            return (
-                                                <div key={exam.id} className={`flex items-center justify-between p-3 rounded-xl border ${isUrgent ? 'bg-rose-50 border-rose-200' : isPast ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'} group relative`}>
-                                                    <div className="flex-1 min-w-0 pr-2">
-                                                        <h4 className={`text-sm font-bold truncate ${isUrgent ? 'text-rose-700' : 'text-slate-700'}`}>{exam.name}</h4>
-                                                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                                                            <span className="flex items-center gap-1"><Icons.Calendar size={12} /> {formatDateLabel(exam.date)}</span>
-                                                            {exam.time && <span className="flex items-center gap-1"><Icons.Clock size={12} /> {exam.time}</span>}
-                                                            {exam.location && <span className="flex items-center gap-1 truncate"><Icons.MapPin size={12} /> {exam.location}</span>}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex flex-col items-end">
-                                                        {isPast ? (
-                                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Đã qua</span>
-                                                        ) : (
-                                                            <div className="text-right">
-                                                                <span className={`text-xl font-black ${isUrgent ? 'text-rose-600' : 'text-cyan-600'}`}>{daysLeft}</span>
-                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Ngày</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <button onClick={() => handleDeleteExam(exam.id)} className="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 shadow-sm opacity-0 group-hover:opacity-100 transition-all">
-                                                        <Icons.Trash size={12} />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })
-                                    )}
+                                <div className="h-6 flex items-center ml-2 border-l border-slate-300 pl-3">
+                                    {syncStatus === 'syncing' && <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Icons.Sync size={12} className="spin-slow" /> Đang lưu...</span>}
+                                    {syncStatus === 'saved' && <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-500 flex items-center gap-1.5 animate-fade-in"><Icons.CheckCircle size={12} /> Đã lưu DB</span>}
+                                    {syncStatus === 'error' && <span className="text-[11px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1.5"><Icons.AlertCircle size={12} /> Lỗi đồng bộ DB</span>}
                                 </div>
                             </div>
+                        </header>
 
-                            <h3 className="text-2xl font-emphasis text-slate-800 flex items-center gap-2 mb-2 mt-4">
-                                <Icons.Folder className="text-cyan-600" /> Tài liệu học tập
-                            </h3>
+                        {renderMoodWeatherSection()}
 
-                            <div className="space-y-5">
-                                {topics.map((topic, idx) => {
-                                    const progress = getTopicProgress(topic, idx);
 
-                                    return (
-                                        <div key={idx} className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-200 transition-all duration-300 group ${expandedTopic === idx ? 'ring-2 ring-cyan-500/50 shadow-md' : 'hover:border-cyan-300 hover:shadow-md cursor-pointer'}`} onClick={() => expandedTopic !== idx && toggleTopic(idx)}>
-                                            <div className="flex justify-between items-end mb-4">
-                                                <div className="pr-4">
-                                                    <h3 className={`text-xl font-bold font-emphasis flex items-center gap-2 ${expandedTopic === idx ? 'text-cyan-700' : 'text-slate-800 group-hover:text-cyan-700'}`}>
-                                                        {topic.title}
-                                                    </h3>
-                                                    <p className="text-slate-500 text-sm mt-1 leading-snug">{topic.desc}</p>
+
+                        {renderCalendarSection()}
+
+                        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
+                            <div className="flex-1 w-full min-w-0">
+                                {isDbLoading ? (
+                                    <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
+                                        <div className="w-12 h-12 border-4 border-cyan-100 border-t-cyan-600 rounded-full animate-spin mb-4"></div>
+                                        <p className="text-slate-500 font-bold animate-pulse">Đang đồng bộ dữ liệu từ đám mây...</p>
+                                        <p className="text-slate-400 text-sm mt-1">Google Sheet Database</p>
+                                    </div>
+                                ) : (
+                                    <Fragment>
+                                        <div className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 mb-8 flex flex-col gap-3">
+                                            <input
+                                                type="text"
+                                                placeholder="Bạn muốn học/làm gì tiếp theo?"
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 transition-all text-slate-700"
+                                                value={newTaskText}
+                                                onChange={e => setNewTaskText(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && handleAddTask()}
+                                            />
+
+                                            <div className="flex flex-col lg:flex-row gap-2 w-full">
+                                                <select
+                                                    className="bg-slate-50 border border-slate-200 text-slate-600 rounded-xl px-3 py-2.5 outline-none focus:border-cyan-500 text-sm flex-1 lg:flex-none cursor-pointer"
+                                                    value={newTaskCat}
+                                                    onChange={e => setNewTaskCat(e.target.value)}
+                                                >
+                                                    {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                                </select>
+
+                                                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 flex-1 lg:flex-none">
+                                                    <input
+                                                        type="date"
+                                                        className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
+                                                        value={newTaskStartDate}
+                                                        onChange={e => {
+                                                            setNewTaskStartDate(e.target.value);
+                                                            if (e.target.value > newTaskEndDate) setNewTaskEndDate(e.target.value);
+                                                        }}
+                                                        title="Từ ngày"
+                                                    />
+                                                    <span className="text-slate-300">-</span>
+                                                    <input
+                                                        type="date"
+                                                        className="bg-transparent text-slate-600 py-2 outline-none focus:text-cyan-600 text-xs w-full cursor-pointer"
+                                                        value={newTaskEndDate}
+                                                        onChange={e => {
+                                                            setNewTaskEndDate(e.target.value);
+                                                            if (e.target.value < newTaskStartDate) setNewTaskStartDate(e.target.value);
+                                                        }}
+                                                        title="Đến ngày"
+                                                    />
                                                 </div>
-                                            </div>
 
-                                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div className={`h-full bg-gradient-to-r ${topic.color} rounded-full opacity-90 transition-all duration-1000`} style={{ width: `${progress}%` }}></div>
+                                                <button onClick={handleAddTask} className="bg-cyan-600 text-white rounded-xl px-4 py-2.5 font-bold hover:bg-cyan-700 transition-colors shadow-md shadow-cyan-500/30 flex items-center justify-center gap-1 w-full lg:w-auto">
+                                                    <Icons.Plus size={18} /> Thêm
+                                                </button>
                                             </div>
+                                        </div>
 
-                                            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expandedTopic === idx ? 'max-h-[1500px] opacity-100 mt-5 pt-5 border-t border-slate-100' : 'max-h-0 opacity-0 mt-0 pt-0 border-transparent'}`}>
-                                                {topic.subSections && (
-                                                    <div className="grid grid-cols-1 gap-3">
-                                                        {topic.subSections.map((sub, sIdx) => {
-                                                            const key = `topic_${idx}_sub_${sIdx}`;
-                                                            const customLinksSub = customLinks[key] || [];
-                                                            return (
-                                                            <div key={sIdx} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                        <div className="flex gap-2 md:gap-4 border-b border-slate-200 mb-6 overflow-x-auto pb-1 hide-scrollbar">
+                                            {[
+                                                { id: 'today', icon: Icons.Sun, label: 'Hôm nay', count: todayTasks.length },
+                                                { id: 'upcoming', icon: Icons.Calendar, label: 'Sắp tới', count: upcomingTasks.length },
+                                                { id: 'completed', icon: Icons.History, label: 'Đã hoàn thành', count: null }
+                                            ].map(tab => (
+                                                <button
+                                                    key={tab.id}
+                                                    onClick={() => setActiveTab(tab.id)}
+                                                    className={`flex items-center gap-2 px-4 py-3 border-b-2 font-bold text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-cyan-600 text-cyan-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                                                >
+                                                    <tab.icon size={18} /> {tab.label}
+                                                    {tab.count !== null && <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${activeTab === tab.id ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-500'}`}>{tab.count}</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="min-h-[400px]">
+                                            {activeTab === 'today' && (
+                                                <div className="animate-fade-in space-y-3">
+                                                    {todayTasks.length === 0 ? (
+                                                        <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                            <Icons.Sun className="mx-auto text-yellow-400 mb-4" size={48} />
+                                                            <p className="text-slate-600 font-bold text-lg">Hôm nay bạn chưa có lịch trình nào!</p>
+                                                            <p className="text-slate-400 mt-1">Hãy thêm công việc hoặc tận hưởng một ngày nghỉ ngơi.</p>
+                                                        </div>
+                                                    ) : (
+                                                        todayTasks.map(renderTaskItem)
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {activeTab === 'upcoming' && (
+                                                <div className="animate-fade-in space-y-8">
+                                                    {Object.keys(groupedUpcoming).length === 0 ? (
+                                                        <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                            <Icons.Calendar className="mx-auto text-indigo-400 mb-4" size={48} />
+                                                            <p className="text-slate-600 font-bold text-lg">Chưa có kế hoạch cho tương lai</p>
+                                                            <p className="text-slate-400 mt-1">Chuẩn bị trước sẽ giúp bạn chủ động hơn.</p>
+                                                        </div>
+                                                    ) : (
+                                                        Object.keys(groupedUpcoming).sort().map(dateStr => (
+                                                            <div key={dateStr}>
+                                                                <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-indigo-100 pb-2">
+                                                                    <Icons.Calendar size={16} /> {formatDateLabel(dateStr)}
+                                                                </h4>
+                                                                <div className="space-y-3">
+                                                                    {groupedUpcoming[dateStr].map(renderTaskItem)}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {activeTab === 'completed' && (
+                                                <div className="animate-fade-in space-y-8">
+                                                    {Object.keys(groupedCompleted).length === 0 ? (
+                                                        <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-300">
+                                                            <Icons.History className="mx-auto text-emerald-400 mb-4" size={48} />
+                                                            <p className="text-slate-600 font-bold text-lg">Chưa có ghi nhận hoàn thành</p>
+                                                        </div>
+                                                    ) : (
+                                                        Object.keys(groupedCompleted).sort((a, b) => b.localeCompare(a)).map(dateStr => (
+                                                            <div key={dateStr}>
+                                                                <h4 className="text-sm font-bold text-emerald-600 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-emerald-100 pb-2">
+                                                                    <Icons.CheckCircle size={16} /> {formatDateLabel(dateStr)}
+                                                                </h4>
+                                                                <div className="space-y-3">
+                                                                    {groupedCompleted[dateStr].map(renderTaskItem)}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Fragment>
+                                )}
+                            </div>
+
+                            <div className="w-full lg:w-[420px] flex-shrink-0 flex flex-col gap-6">
+
+                                {/* --- MANUAL EXAMS SECTION --- */}
+                                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xl font-emphasis text-slate-800 flex items-center gap-2">
+                                            <Icons.Clock className="text-rose-500" /> Lịch thi & Kiểm tra
+                                        </h3>
+                                        <button onClick={() => setShowAddExam(!showAddExam)} className="text-xs bg-rose-50 text-rose-600 font-bold px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors">
+                                            + Thêm
+                                        </button>
+                                    </div>
+
+                                    {showAddExam && (
+                                        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col gap-2">
+                                            <input type="text" placeholder="Tên môn thi / kiểm tra..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamName} onChange={e => setNewExamName(e.target.value)} />
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <input type="date" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamDate} onChange={e => setNewExamDate(e.target.value)} />
+                                                <input type="time" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamTime} onChange={e => setNewExamTime(e.target.value)} />
+                                            </div>
+                                            <input type="text" placeholder="Địa điểm thi (tùy chọn)..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamLocation} onChange={e => setNewExamLocation(e.target.value)} />
+
+                                            <div className="flex justify-end gap-2 mt-1">
+                                                <button onClick={() => setShowAddExam(false)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded">Hủy</button>
+                                                <button onClick={handleAddExam} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors shadow-sm">Lưu</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-3">
+                                        {exams.length === 0 ? (
+                                            <p className="text-sm text-slate-400 italic text-center py-4">Chưa có lịch thi nào được lên.</p>
+                                        ) : (
+                                            exams.map(exam => {
+                                                const daysLeft = calculateDaysLeft(exam.date);
+                                                const isUrgent = daysLeft >= 0 && daysLeft <= 3;
+                                                const isPast = daysLeft < 0;
+                                                return (
+                                                    <div key={exam.id} className={`flex items-center justify-between p-3 rounded-xl border ${isUrgent ? 'bg-rose-50 border-rose-200' : isPast ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'} group relative`}>
+                                                        <div className="flex-1 min-w-0 pr-2">
+                                                            <h4 className={`text-sm font-bold truncate ${isUrgent ? 'text-rose-700' : 'text-slate-700'}`}>{exam.name}</h4>
+                                                            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                                                                <span className="flex items-center gap-1"><Icons.Calendar size={12} /> {formatDateLabel(exam.date)}</span>
+                                                                {exam.time && <span className="flex items-center gap-1"><Icons.Clock size={12} /> {exam.time}</span>}
+                                                                {exam.location && <span className="flex items-center gap-1 truncate"><Icons.MapPin size={12} /> {exam.location}</span>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-col items-end">
+                                                            {isPast ? (
+                                                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Đã qua</span>
+                                                            ) : (
+                                                                <div className="text-right">
+                                                                    <span className={`text-xl font-black ${isUrgent ? 'text-rose-600' : 'text-cyan-600'}`}>{daysLeft}</span>
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Ngày</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button onClick={() => handleDeleteExam(exam.id)} className="absolute -right-2 -top-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 shadow-sm opacity-0 group-hover:opacity-100 transition-all">
+                                                            <Icons.Trash size={12} />
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+
+                                <h3 className="text-2xl font-emphasis text-slate-800 flex items-center gap-2 mb-2 mt-4">
+                                    <Icons.Folder className="text-cyan-600" /> Tài liệu học tập
+                                </h3>
+
+                                <div className="space-y-5">
+                                    {topics.map((topic, idx) => {
+                                        const progress = getTopicProgress(topic, idx);
+
+                                        return (
+                                            <div key={idx} className={`bg-white rounded-2xl p-6 shadow-sm border border-slate-200 transition-all duration-300 group ${expandedTopic === idx ? 'ring-2 ring-cyan-500/50 shadow-md' : 'hover:border-cyan-300 hover:shadow-md cursor-pointer'}`} onClick={() => expandedTopic !== idx && toggleTopic(idx)}>
+                                                <div className="flex justify-between items-end mb-4">
+                                                    <div className="pr-4">
+                                                        <h3 className={`text-xl font-bold font-emphasis flex items-center gap-2 ${expandedTopic === idx ? 'text-cyan-700' : 'text-slate-800 group-hover:text-cyan-700'}`}>
+                                                            {topic.title}
+                                                        </h3>
+                                                        <p className="text-slate-500 text-sm mt-1 leading-snug">{topic.desc}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className={`h-full bg-gradient-to-r ${topic.color} rounded-full opacity-90 transition-all duration-1000`} style={{ width: `${progress}%` }}></div>
+                                                </div>
+
+                                                <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expandedTopic === idx ? 'max-h-[1500px] opacity-100 mt-5 pt-5 border-t border-slate-100' : 'max-h-0 opacity-0 mt-0 pt-0 border-transparent'}`}>
+                                                    {topic.subSections && (
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {topic.subSections.map((sub, sIdx) => {
+                                                                const key = `topic_${idx}_sub_${sIdx}`;
+                                                                const customLinksSub = customLinks[key] || [];
+                                                                return (
+                                                                    <div key={sIdx} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                                                                        <div className="flex justify-between items-center mb-3">
+                                                                            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                                                                                {(() => { const DIcon = Icons[sub.icon]; return DIcon ? <DIcon size={16} className="text-cyan-600" /> : null; })()} {sub.title}
+                                                                            </h4>
+                                                                            <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-colors flex-shrink-0">
+                                                                                + Thêm
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="space-y-2">
+                                                                            {sub.links.map((link, lIdx) => {
+                                                                                const statusKey = `topic_${idx}_sub_${sIdx}_link_${lIdx}`;
+                                                                                const isCompleted = predefinedLinkStatus[statusKey] || false;
+                                                                                return (
+                                                                                    <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                        <button onClick={() => togglePredefinedLink(statusKey)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                            {isCompleted && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                        </button>
+                                                                                        <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                            {link.name}
+                                                                                        </a>
+                                                                                        <Icons.ArrowUpRight size={14} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                            {customLinksSub.map((link, cIdx) => (
+                                                                                <div key={`custom-${cIdx}`} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                    <button onClick={() => toggleLinkCompletion(key, cIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                        {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                    </button>
+                                                                                    {link.url ? (
+                                                                                        <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                            {link.name}
+                                                                                        </a>
+                                                                                    ) : (
+                                                                                        <span className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                                                                            {link.name}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, cIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity ml-auto">
+                                                                                        <Icons.Trash size={14} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                        {addingLinkTo === key && (
+                                                                            <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                                                                                <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                                <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                <div className="flex gap-2 justify-end mt-1">
+                                                                                    <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
+                                                                                    <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-1.5 rounded hover:bg-cyan-700 transition-colors">Lưu lại</button>
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {topic.links && !topic.subSections && (() => {
+                                                        const key = `topic_${idx}`;
+                                                        const customLinksTopic = customLinks[key] || [];
+                                                        return (
+                                                            <div className="px-1">
                                                                 <div className="flex justify-between items-center mb-3">
-                                                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                                                                        {(() => { const DIcon = Icons[sub.icon]; return DIcon ? <DIcon size={16} className="text-cyan-600" /> : null; })()} {sub.title}
-                                                                    </h4>
-                                                                    <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-colors flex-shrink-0">
+                                                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">DANH SÁCH TÀI LIỆU</h4>
+                                                                    <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-3 py-1.5 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors">
                                                                         + Thêm
                                                                     </button>
                                                                 </div>
                                                                 <div className="space-y-2">
-                                                                    {sub.links.map((link, lIdx) => {
-                                                                        const statusKey = `topic_${idx}_sub_${sIdx}_link_${lIdx}`;
+                                                                    {topic.links.map((link, lIdx) => {
+                                                                        const statusKey = `topic_${idx}_link_${lIdx}`;
                                                                         const isCompleted = predefinedLinkStatus[statusKey] || false;
                                                                         return (
-                                                                            <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                            <div key={lIdx} className={`flex items-center gap-3 p-3 rounded-xl border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-slate-50 border-slate-100 hover:border-cyan-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
                                                                                 <button onClick={() => togglePredefinedLink(statusKey)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
                                                                                     {isCompleted && <Icons.CheckCircle size={12} className="text-emerald-600" />}
                                                                                 </button>
-                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
-                                                                                    {link.name}
+                                                                                <Icons.Folder size={18} className={`flex-shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400 group-hover/link:text-cyan-500'}`} />
+                                                                                <a href={link.url || link} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-700 hover:text-cyan-700'}`}>
+                                                                                    {link.name || `Tài liệu học tập #${lIdx + 1}`}
                                                                                 </a>
-                                                                                <Icons.ArrowUpRight size={14} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
+                                                                                <Icons.ArrowUpRight size={16} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
                                                                             </div>
                                                                         );
                                                                     })}
-                                                                    {customLinksSub.map((link, cIdx) => (
-                                                                        <div key={`custom-${cIdx}`} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                    {customLinksTopic.map((link, cIdx) => (
+                                                                        <div key={`custom-${cIdx}`} className={`flex items-center gap-3 p-3 rounded-xl border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-white border-transparent hover:border-cyan-200'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
                                                                             <button onClick={() => toggleLinkCompletion(key, cIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
                                                                                 {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
                                                                             </button>
+                                                                            <Icons.Folder size={18} className={`flex-shrink-0 ${link.completed ? 'text-emerald-500' : 'text-slate-400 group-hover/link:text-cyan-500'}`} />
                                                                             {link.url ? (
-                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-700 hover:text-cyan-700'}`}>
                                                                                     {link.name}
                                                                                 </a>
                                                                             ) : (
-                                                                                <span className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                                                                <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
                                                                                     {link.name}
                                                                                 </span>
                                                                             )}
                                                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, cIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity ml-auto">
-                                                                                <Icons.Trash size={14} />
+                                                                                <Icons.Trash size={16} />
                                                                             </button>
                                                                         </div>
                                                                     ))}
                                                                 </div>
                                                                 {addingLinkTo === key && (
-                                                                    <div className="mt-3 p-3 bg-white rounded-lg border border-cyan-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                                                                        <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
-                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                    <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-cyan-200 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+                                                                        <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white shadow-sm" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white shadow-sm" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
                                                                         <div className="flex gap-2 justify-end mt-1">
-                                                                            <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
-                                                                            <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-1.5 rounded hover:bg-cyan-700 transition-colors">Lưu lại</button>
+                                                                            <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 transition-colors shadow-sm">Hủy</button>
+                                                                            <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-sm">Lưu lại</button>
                                                                         </div>
                                                                     </div>
                                                                 )}
                                                             </div>
-                                                        )})}
-                                                    </div>
-                                                )}
+                                                        );
+                                                    })()}
 
-                                                {topic.links && !topic.subSections && (() => {
-                                                    const key = `topic_${idx}`;
-                                                    const customLinksTopic = customLinks[key] || [];
-                                                    return (
-                                                    <div className="px-1">
-                                                        <div className="flex justify-between items-center mb-3">
-                                                            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-widest flex items-center gap-2">DANH SÁCH TÀI LIỆU</h4>
-                                                            <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-3 py-1.5 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors">
-                                                                + Thêm
-                                                            </button>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            {topic.links.map((link, lIdx) => {
-                                                                const statusKey = `topic_${idx}_link_${lIdx}`;
-                                                                const isCompleted = predefinedLinkStatus[statusKey] || false;
-                                                                return (
-                                                                    <div key={lIdx} className={`flex items-center gap-3 p-3 rounded-xl border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-slate-50 border-slate-100 hover:border-cyan-200 hover:bg-white'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
-                                                                        <button onClick={() => togglePredefinedLink(statusKey)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
-                                                                            {isCompleted && <Icons.CheckCircle size={12} className="text-emerald-600" />}
-                                                                        </button>
-                                                                        <Icons.Folder size={18} className={`flex-shrink-0 ${isCompleted ? 'text-emerald-500' : 'text-slate-400 group-hover/link:text-cyan-500'}`} />
-                                                                        <a href={link.url || link} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${isCompleted ? 'text-slate-400 line-through' : 'text-slate-700 hover:text-cyan-700'}`}>
-                                                                            {link.name || `Tài liệu học tập #${lIdx + 1}`}
-                                                                        </a>
-                                                                        <Icons.ArrowUpRight size={16} className="ml-auto opacity-0 group-hover/link:opacity-100 flex-shrink-0 text-slate-400" />
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            {customLinksTopic.map((link, cIdx) => (
-                                                                <div key={`custom-${cIdx}`} className={`flex items-center gap-3 p-3 rounded-xl border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'bg-white border-transparent hover:border-cyan-200'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
-                                                                    <button onClick={() => toggleLinkCompletion(key, cIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
-                                                                        {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
-                                                                    </button>
-                                                                    <Icons.Folder size={18} className={`flex-shrink-0 ${link.completed ? 'text-emerald-500' : 'text-slate-400 group-hover/link:text-cyan-500'}`} />
-                                                                    {link.url ? (
-                                                                        <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-700 hover:text-cyan-700'}`}>
-                                                                            {link.name}
-                                                                        </a>
-                                                                    ) : (
-                                                                        <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                                                                            {link.name}
-                                                                        </span>
-                                                                    )}
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, cIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity ml-auto">
-                                                                        <Icons.Trash size={16} />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {addingLinkTo === key && (
-                                                            <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-cyan-200 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-                                                                <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white shadow-sm" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
-                                                                <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white shadow-sm" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
-                                                                <div className="flex gap-2 justify-end mt-1">
-                                                                    <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 transition-colors shadow-sm">Hủy</button>
-                                                                    <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 transition-colors shadow-sm">Lưu lại</button>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    );
-                                                })()}
-
-                                                {topic.isThreeSome && (
-                                                    <div className="mt-6 pt-4 border-t border-rose-100 animate-fade-in-down space-y-4">
-                                                        <div className="bg-rose-50/80 rounded-xl overflow-hidden border border-rose-200">
-                                                            <div className="px-4 py-3 bg-rose-100/50 border-b border-rose-200 flex items-center gap-2">
-                                                                <Icons.Target size={18} className="text-rose-600" />
-                                                                <h4 className="font-bold text-rose-800 text-sm">Nội dung & Mục tiêu (Tự định nghĩa)</h4>
-                                                            </div>
-                                                            <div className="p-4 space-y-4">
-                                                                {['Mục tiêu học tập', 'Tài liệu & Nội dung'].map(cat => {
-                                                                    const key = `ThreeSome_${cat}`;
-                                                                    const links = customLinks[key] || [];
-                                                                    return (
-                                                                        <div key={cat} className="bg-white rounded-xl p-3 border border-rose-100 shadow-sm">
-                                                                            <div className="flex justify-between items-center mb-3">
-                                                                                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
-                                                                                    {cat === 'Mục tiêu học tập' ? <Icons.Target size={14} className="text-rose-500" /> : <Icons.BookOpen size={14} className="text-rose-500" />}
-                                                                                    {cat}
-                                                                                </h4>
-                                                                                <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-rose-600 hover:text-rose-700 font-bold px-2 py-1 bg-rose-50 rounded hover:bg-rose-100 transition-colors">
-                                                                                    + Thêm
-                                                                                </button>
-                                                                            </div>
-
-                                                                            <div className="space-y-2">
-                                                                                {links.map((link, lIdx) => (
-                                                                                    <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
-                                                                                        <button onClick={() => toggleLinkCompletion(key, lIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
-                                                                                            {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
-                                                                                        </button>
-                                                                                        {link.url ? (
-                                                                                            <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-rose-600'}`}>
-                                                                                                {link.name}
-                                                                                            </a>
-                                                                                        ) : (
-                                                                                            <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
-                                                                                                {link.name}
-                                                                                            </span>
-                                                                                        )}
-                                                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, lIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity">
-                                                                                            <Icons.Trash size={14} />
-                                                                                        </button>
-                                                                                    </div>
-                                                                                ))}
-                                                                                {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có nội dung nào.</p>}
-                                                                            </div>
-
-                                                                            {addingLinkTo === key && (
-                                                                                <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-rose-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                                                                                    <input type="text" placeholder={cat === 'Mục tiêu học tập' ? "Nhập mục tiêu..." : "Tên tài liệu / nội dung..."} className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
-                                                                                    {cat === 'Tài liệu & Nội dung' && (
-                                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
-                                                                                    )}
-                                                                                    <div className="flex gap-2 justify-end mt-1">
-                                                                                        <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
-                                                                                        <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors">Lưu lại</button>
-                                                                                    </div>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {topic.isUniContainer && (
-                                                    <div className="mt-6 pt-4 border-t border-slate-100 animate-fade-in-down space-y-4">
-                                                        {topic.subjects.map(subject => (
-                                                            <div key={subject} className="bg-slate-50/80 rounded-xl overflow-hidden border border-slate-200">
-                                                                <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 flex items-center gap-2">
-                                                                    <Icons.BookOpen size={18} className="text-amber-600" />
-                                                                    <h4 className="font-bold text-slate-800 text-sm">{subject}</h4>
+                                                    {topic.isThreeSome && (
+                                                        <div className="mt-6 pt-4 border-t border-rose-100 animate-fade-in-down space-y-4">
+                                                            <div className="bg-rose-50/80 rounded-xl overflow-hidden border border-rose-200">
+                                                                <div className="px-4 py-3 bg-rose-100/50 border-b border-rose-200 flex items-center gap-2">
+                                                                    <Icons.Target size={18} className="text-rose-600" />
+                                                                    <h4 className="font-bold text-rose-800 text-sm">Nội dung & Mục tiêu (Tự định nghĩa)</h4>
                                                                 </div>
                                                                 <div className="p-4 space-y-4">
-                                                                    {['Trên lớp', 'Bổ sung'].map(cat => {
-                                                                        const key = `${subject}_${cat}`;
+                                                                    {['Mục tiêu học tập', 'Tài liệu & Nội dung'].map(cat => {
+                                                                        const key = `ThreeSome_${cat}`;
                                                                         const links = customLinks[key] || [];
                                                                         return (
-                                                                            <div key={cat} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                                                            <div key={cat} className="bg-white rounded-xl p-3 border border-rose-100 shadow-sm">
                                                                                 <div className="flex justify-between items-center mb-3">
                                                                                     <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
-                                                                                        {cat === 'Trên lớp' ? <Icons.BookOpen size={14} className="text-cyan-600" /> : <Icons.Plus size={14} className="text-cyan-600" />}
+                                                                                        {cat === 'Mục tiêu học tập' ? <Icons.Target size={14} className="text-rose-500" /> : <Icons.BookOpen size={14} className="text-rose-500" />}
                                                                                         {cat}
                                                                                     </h4>
-                                                                                    <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-colors">
+                                                                                    <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-rose-600 hover:text-rose-700 font-bold px-2 py-1 bg-rose-50 rounded hover:bg-rose-100 transition-colors">
                                                                                         + Thêm
                                                                                     </button>
                                                                                 </div>
@@ -1399,7 +1641,7 @@
                                                                                                 {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
                                                                                             </button>
                                                                                             {link.url ? (
-                                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                                <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-rose-600'}`}>
                                                                                                     {link.name}
                                                                                                 </a>
                                                                                             ) : (
@@ -1412,16 +1654,18 @@
                                                                                             </button>
                                                                                         </div>
                                                                                     ))}
-                                                                                    {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có tài liệu nào.</p>}
+                                                                                    {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có nội dung nào.</p>}
                                                                                 </div>
 
                                                                                 {addingLinkTo === key && (
-                                                                                    <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-cyan-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                                                                                        <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
-                                                                                        <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                    <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-rose-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                                                                                        <input type="text" placeholder={cat === 'Mục tiêu học tập' ? "Nhập mục tiêu..." : "Tên tài liệu / nội dung..."} className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                                        {cat === 'Tài liệu & Nội dung' && (
+                                                                                            <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-rose-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                        )}
                                                                                         <div className="flex gap-2 justify-end mt-1">
                                                                                             <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
-                                                                                            <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-1.5 rounded hover:bg-cyan-700 transition-colors">Lưu lại</button>
+                                                                                            <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-rose-500 text-white px-4 py-1.5 rounded hover:bg-rose-600 transition-colors">Lưu lại</button>
                                                                                         </div>
                                                                                     </div>
                                                                                 )}
@@ -1430,23 +1674,91 @@
                                                                     })}
                                                                 </div>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                                        </div>
+                                                    )}
 
-                                                <div className="mt-4 flex justify-end">
-                                                    <button onClick={(e) => { e.stopPropagation(); toggleTopic(idx); }} className="text-xs font-bold text-slate-400 hover:text-slate-700 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
-                                                        Đóng lại
-                                                    </button>
+                                                    {topic.isUniContainer && (
+                                                        <div className="mt-6 pt-4 border-t border-slate-100 animate-fade-in-down space-y-4">
+                                                            {topic.subjects.map(subject => (
+                                                                <div key={subject} className="bg-slate-50/80 rounded-xl overflow-hidden border border-slate-200">
+                                                                    <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 flex items-center gap-2">
+                                                                        <Icons.BookOpen size={18} className="text-amber-600" />
+                                                                        <h4 className="font-bold text-slate-800 text-sm">{subject}</h4>
+                                                                    </div>
+                                                                    <div className="p-4 space-y-4">
+                                                                        {['Trên lớp', 'Bổ sung'].map(cat => {
+                                                                            const key = `${subject}_${cat}`;
+                                                                            const links = customLinks[key] || [];
+                                                                            return (
+                                                                                <div key={cat} className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm">
+                                                                                    <div className="flex justify-between items-center mb-3">
+                                                                                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+                                                                                            {cat === 'Trên lớp' ? <Icons.BookOpen size={14} className="text-cyan-600" /> : <Icons.Plus size={14} className="text-cyan-600" />}
+                                                                                            {cat}
+                                                                                        </h4>
+                                                                                        <button onClick={(e) => { e.stopPropagation(); setAddingLinkTo(addingLinkTo === key ? null : key); setNewLinkName(''); setNewLinkUrl(''); }} className="text-xs text-cyan-600 hover:text-cyan-700 font-bold px-2 py-1 bg-cyan-50 rounded hover:bg-cyan-100 transition-colors">
+                                                                                            + Thêm
+                                                                                        </button>
+                                                                                    </div>
+
+                                                                                    <div className="space-y-2">
+                                                                                        {links.map((link, lIdx) => (
+                                                                                            <div key={lIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${link.completed ? 'bg-emerald-50/50 border-emerald-200/50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'} transition-all group/link relative`} onClick={e => e.stopPropagation()}>
+                                                                                                <button onClick={() => toggleLinkCompletion(key, lIdx)} className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${link.completed ? 'bg-emerald-100 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}>
+                                                                                                    {link.completed && <Icons.CheckCircle size={12} className="text-emerald-600" />}
+                                                                                                </button>
+                                                                                                {link.url ? (
+                                                                                                    <a href={link.url} target="_blank" rel="noopener noreferrer" className={`flex-1 truncate text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600 hover:text-cyan-700'}`}>
+                                                                                                        {link.name}
+                                                                                                    </a>
+                                                                                                ) : (
+                                                                                                    <span className={`flex-1 text-sm font-medium transition-colors ${link.completed ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                                                                                        {link.name}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteCustomLink(key, lIdx); }} className="opacity-0 group-hover/link:opacity-100 text-rose-400 hover:text-rose-600 p-1 bg-rose-50 rounded transition-opacity">
+                                                                                                    <Icons.Trash size={14} />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                        {links.length === 0 && <p className="text-xs text-slate-400 italic pl-2">Chưa có tài liệu nào.</p>}
+                                                                                    </div>
+
+                                                                                    {addingLinkTo === key && (
+                                                                                        <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-cyan-200 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                                                                                            <input type="text" placeholder="Tên tài liệu..." className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkName} onChange={e => setNewLinkName(e.target.value)} />
+                                                                                            <input type="text" placeholder="Link URL (tuỳ chọn)" className="text-sm px-3 py-2 border border-slate-200 rounded-md outline-none focus:border-cyan-400 bg-white" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} />
+                                                                                            <div className="flex gap-2 justify-end mt-1">
+                                                                                                <button onClick={() => setAddingLinkTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded bg-white border border-slate-200 hover:bg-slate-100 transition-colors">Hủy</button>
+                                                                                                <button onClick={() => handleAddCustomLink(key)} className="text-xs font-bold bg-cyan-600 text-white px-4 py-1.5 rounded hover:bg-cyan-700 transition-colors">Lưu lại</button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="mt-4 flex justify-end">
+                                                        <button onClick={(e) => { e.stopPropagation(); toggleTopic(idx); }} className="text-xs font-bold text-slate-400 hover:text-slate-700 uppercase tracking-widest px-3 py-1.5 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
+                                                            Đóng lại
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
-                        </div>
                     </div>
+
+                    {renderMoodCalendarPanel()}
+
                 </div>
             );
         };

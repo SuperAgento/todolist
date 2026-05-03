@@ -258,6 +258,67 @@
 
         const getMoodById = (id) => moodWeatherOptions.find(m => m.id === id) || moodWeatherOptions[1];
 
+        const DEFAULT_EXAMS = [
+            { id: 'exam_dnts_20260506', name: 'DNTS', date: '2026-05-06', time: '', location: '', link: 'https://mail.google.com/mail/u/0/#search/DNTS/FMfcgzQgLXqmkbdHqtRVjtjGsKLKcNfh', note: '' },
+            { id: 'exam_accounting_mid_20260507', name: 'giữa kì Kế toán', date: '2026-05-07', time: '', location: '', link: '', note: '' },
+            { id: 'exam_z_marketer_20260508', name: 'Z marketer', date: '2026-05-08', time: '', location: '', link: '', note: '' },
+            { id: 'exam_chess_1_20260509', name: 'Cờ Vua 1', date: '2026-05-09', time: '09:00', location: 'A2-615', link: '', note: '' },
+            { id: 'exam_bleed_20260511', name: 'BLEED', date: '2026-05-11', time: '', location: '', link: '', note: 'Kết Quả' },
+            { id: 'exam_hrc_20260515', name: 'HRC', date: '2026-05-15', time: '', location: '', link: 'https://web.facebook.com/hrc.fanpage', note: '' },
+            { id: 'exam_rmit_research_challenge_20260515', name: 'RMIT RESEARCH CHALLENGE', date: '2026-05-15', time: '', location: '', link: '', note: '' },
+            { id: 'exam_ielts_mock_20260517', name: 'THI THỬ IELTS', date: '2026-05-17', time: '', location: 'Prep', link: '', note: '' },
+            { id: 'exam_basic_accounting_2_20260527', name: 'Kế toán căn bản 2', date: '2026-05-27', time: '15:00', location: 'A2-906', link: '', note: '' },
+            { id: 'exam_global_leadership_20260530', name: 'Lãnh đạo trước thách thức toàn cầu', date: '2026-05-30', time: '09:00', location: 'A2-710', link: '', note: '' },
+            { id: 'exam_ie_mock_20260531', name: 'THI THỬ IE', date: '2026-05-31', time: '', location: 'Prep', link: '', note: '' }
+        ];
+
+        const sortExamsByDate = (items = []) => [...items].sort((a, b) => {
+            const dateDiff = new Date(a.date || '9999-12-31') - new Date(b.date || '9999-12-31');
+            if (dateDiff !== 0) return dateDiff;
+            return String(a.time || '').localeCompare(String(b.time || ''));
+        });
+
+        const mergeExamsWithDefaults = (items = []) => {
+            const merged = new Map();
+            [...DEFAULT_EXAMS, ...(Array.isArray(items) ? items : [])].forEach((exam) => {
+                if (!exam || !exam.date || !exam.name) return;
+                const id = exam.id || `exam_${String(exam.name).toLowerCase().replace(/[^a-z0-9]+/gi, '_')}_${exam.date}`;
+                merged.set(id, { time: '', location: '', link: '', note: '', ...exam, id });
+            });
+            return sortExamsByDate(Array.from(merged.values()));
+        };
+
+        const readLocalJson = (key, fallback) => {
+            try {
+                const saved = localStorage.getItem(key);
+                return saved ? JSON.parse(saved) : fallback;
+            } catch (e) {
+                return fallback;
+            }
+        };
+
+        const normalizePlannerPayload = (data) => {
+            // Backward-compatible: API cũ chỉ trả về mảng tasks.
+            if (Array.isArray(data)) {
+                return {
+                    tasks: data,
+                    exams: mergeExamsWithDefaults(readLocalJson('study_exams', [])),
+                    moodLogs: readLocalJson('study_mood_weather', {}),
+                    customLinks: readLocalJson('study_custom_links', {}),
+                    predefinedLinkStatus: readLocalJson('study_predefined_links', {})
+                };
+            }
+
+            const state = data && typeof data === 'object' ? data : {};
+            return {
+                tasks: Array.isArray(state.tasks) ? state.tasks : readLocalJson('study_tasks_cache', []),
+                exams: mergeExamsWithDefaults(state.exams || state.examList || readLocalJson('study_exams', [])),
+                moodLogs: state.moodLogs && typeof state.moodLogs === 'object' ? state.moodLogs : readLocalJson('study_mood_weather', {}),
+                customLinks: state.customLinks && typeof state.customLinks === 'object' ? state.customLinks : readLocalJson('study_custom_links', {}),
+                predefinedLinkStatus: state.predefinedLinkStatus && typeof state.predefinedLinkStatus === 'object' ? state.predefinedLinkStatus : readLocalJson('study_predefined_links', {}),
+            };
+        };
+
 
         const getCategoryStyle = (name) => {
             return categories.find(c => c.name === name) || { color: 'text-slate-700', bg: 'bg-slate-100', dot: 'bg-slate-500' };
@@ -292,38 +353,24 @@
             const [expandedTopic, setExpandedTopic] = useState(null);
             const [draggedTaskId, setDraggedTaskId] = useState(null);
 
-            const [customLinks, setCustomLinks] = useState(() => {
-                const saved = localStorage.getItem('study_custom_links');
-                return saved ? JSON.parse(saved) : {};
-            });
+            const [customLinks, setCustomLinks] = useState(() => readLocalJson('study_custom_links', {}));
 
             const [addingLinkTo, setAddingLinkTo] = useState(null);
             const [newLinkName, setNewLinkName] = useState('');
             const [newLinkUrl, setNewLinkUrl] = useState('');
 
-            const [predefinedLinkStatus, setPredefinedLinkStatus] = useState(() => {
-                const saved = localStorage.getItem('study_predefined_links');
-                return saved ? JSON.parse(saved) : {};
-            });
+            const [predefinedLinkStatus, setPredefinedLinkStatus] = useState(() => readLocalJson('study_predefined_links', {}));
 
-            const [exams, setExams] = useState(() => {
-                const saved = localStorage.getItem('study_exams');
-                return saved ? JSON.parse(saved) : [];
-            });
+            const [exams, setExams] = useState(() => mergeExamsWithDefaults(readLocalJson('study_exams', [])));
             const [newExamName, setNewExamName] = useState('');
             const [newExamDate, setNewExamDate] = useState('');
             const [newExamTime, setNewExamTime] = useState('');
             const [newExamLocation, setNewExamLocation] = useState('');
+            const [newExamLink, setNewExamLink] = useState('');
+            const [newExamNote, setNewExamNote] = useState('');
             const [showAddExam, setShowAddExam] = useState(false);
 
-            const [moodLogs, setMoodLogs] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('study_mood_weather');
-                    return saved ? JSON.parse(saved) : {};
-                } catch (e) {
-                    return {};
-                }
-            });
+            const [moodLogs, setMoodLogs] = useState(() => readLocalJson('study_mood_weather', {}));
             const [showMoodPanel, setShowMoodPanel] = useState(false);
             const [selectedMoodDate, setSelectedMoodDate] = useState(todayStr);
             const [moodDraftNote, setMoodDraftNote] = useState('');
@@ -421,34 +468,39 @@
                 }
             }, [isCalAuthorized, gapiReady]);
 
-            // Google Sheet Fetching
+            // Google Sheet Database: đồng bộ tasks + lịch thi/kiểm tra + thời tiết cảm xúc + tài liệu.
             useEffect(() => {
-                const loadTasks = async () => {
+                const loadPlannerData = async () => {
                     try {
-                        // Gọi GET mặc định, xử lý redirect (follow)
                         const res = await fetch(SCRIPT_URL, {
                             method: 'GET',
                             redirect: 'follow'
                         });
                         const data = await res.json();
+                        const planner = normalizePlannerPayload(data);
 
-                        if (Array.isArray(data)) {
-                            setTasks(data);
-                        } else {
-                            console.error("Dữ liệu trả về không hợp lệ:", data);
-                            setTasks([]);
-                        }
+                        setTasks(planner.tasks);
+                        setExams(mergeExamsWithDefaults(planner.exams));
+                        setMoodLogs(planner.moodLogs);
+                        if (planner.customLinks) setCustomLinks(planner.customLinks);
+                        if (planner.predefinedLinkStatus) setPredefinedLinkStatus(planner.predefinedLinkStatus);
                     } catch (err) {
-                        console.error("Lỗi khi tải dữ liệu từ Google Sheet:", err);
-                        setTasks([]);
+                        console.error("Lỗi khi tải dữ liệu từ Google Sheet, đang dùng cache trong máy:", err);
+                        setTasks(readLocalJson('study_tasks_cache', []));
+                        setExams(mergeExamsWithDefaults(readLocalJson('study_exams', [])));
+                        setMoodLogs(readLocalJson('study_mood_weather', {}));
                     } finally {
                         hasLoadedFromDb.current = true;
                         setIsDbLoading(false);
                     }
                 };
 
-                loadTasks();
+                loadPlannerData();
             }, []);
+
+            useEffect(() => {
+                localStorage.setItem('study_tasks_cache', JSON.stringify(tasks));
+            }, [tasks]);
 
             useEffect(() => {
                 if (isDbLoading || !hasLoadedFromDb.current) return;
@@ -457,16 +509,24 @@
                     try {
                         setSyncStatus('syncing');
 
-                        // Gửi POST dạng text/plain để tránh lỗi CORS Preflight (OPTIONS request) trên Apps Script
+                        const payload = {
+                            action: 'writeFull',
+                            version: 2,
+                            updatedAt: new Date().toISOString(),
+                            tasks,
+                            exams: mergeExamsWithDefaults(exams),
+                            moodLogs,
+                            customLinks,
+                            predefinedLinkStatus
+                        };
+
+                        // Dùng text/plain để tránh CORS preflight trên Apps Script Web App.
                         const res = await fetch(SCRIPT_URL, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'text/plain;charset=utf-8'
                             },
-                            body: JSON.stringify({
-                                action: 'write',
-                                tasks: tasks
-                            }),
+                            body: JSON.stringify(payload),
                             redirect: 'follow'
                         });
 
@@ -486,7 +546,7 @@
                 }, 1000);
 
                 return () => clearTimeout(timeout);
-            }, [tasks, isDbLoading]);
+            }, [tasks, exams, moodLogs, customLinks, predefinedLinkStatus, isDbLoading]);
 
             // Calendar Functions
             const handleAuthClick = () => {
@@ -672,17 +732,26 @@
             const handleAddExam = async () => {
                 if (!newExamName || !newExamDate) return;
 
-                const newExam = { id: Date.now(), name: newExamName, date: newExamDate, time: newExamTime, location: newExamLocation };
+                const newExam = {
+                    id: 'exam_' + Date.now(),
+                    name: newExamName.trim(),
+                    date: newExamDate,
+                    time: newExamTime,
+                    location: newExamLocation.trim(),
+                    link: newExamLink.trim(),
+                    note: newExamNote.trim()
+                };
 
                 if (isCalAuthorized && window.gapi && window.gapi.client.calendar) {
                     try {
                         const event = {
-                            summary: `[Lịch Thi] ${newExamName}`,
-                            location: newExamLocation,
+                            summary: `[Lịch Thi] ${newExam.name}`,
+                            location: newExam.location,
+                            description: [newExam.note, newExam.link].filter(Boolean).join('\n')
                         };
 
-                        if (newExamTime) {
-                            const startDateTime = new Date(`${newExamDate}T${newExamTime}:00`);
+                        if (newExam.time) {
+                            const startDateTime = new Date(`${newExam.date}T${newExam.time}:00`);
                             const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // Mặc định 2 tiếng
 
                             event.start = {
@@ -694,12 +763,12 @@
                                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
                             };
                         } else {
-                            const [y, m, d] = newExamDate.split('-');
+                            const [y, m, d] = newExam.date.split('-');
                             const nextDay = new Date(y, m - 1, d);
                             nextDay.setDate(nextDay.getDate() + 1);
 
                             event.start = {
-                                date: newExamDate,
+                                date: newExam.date,
                                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
                             };
                             event.end = {
@@ -718,15 +787,15 @@
                     } catch (err) {
                         console.error('Lỗi khi thêm vào Google Calendar:', err);
                     }
-                } else {
-                    alert('Lịch thi chỉ được lưu trên máy này. Đăng nhập Google Calendar ở "Lịch trong tuần" để đồng bộ tự động lên mọi thiết bị nhé!');
                 }
 
-                setExams(prev => [...prev, newExam].sort((a, b) => new Date(a.date) - new Date(b.date)));
+                setExams(prev => mergeExamsWithDefaults([...prev, newExam]));
                 setNewExamName('');
                 setNewExamDate('');
                 setNewExamTime('');
                 setNewExamLocation('');
+                setNewExamLink('');
+                setNewExamNote('');
                 setShowAddExam(false);
             };
 
@@ -1410,7 +1479,9 @@
                                                 <input type="date" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamDate} onChange={e => setNewExamDate(e.target.value)} />
                                                 <input type="time" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamTime} onChange={e => setNewExamTime(e.target.value)} />
                                             </div>
-                                            <input type="text" placeholder="Địa điểm thi (tùy chọn)..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamLocation} onChange={e => setNewExamLocation(e.target.value)} />
+                                            <input type="text" placeholder="Địa điểm / nguồn tổ chức (tùy chọn)..." className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamLocation} onChange={e => setNewExamLocation(e.target.value)} />
+                                            <input type="url" placeholder="Link liên quan (Gmail/Facebook/Drive...)" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamLink} onChange={e => setNewExamLink(e.target.value)} />
+                                            <input type="text" placeholder="Ghi chú ngắn (ví dụ: Prep, Kết Quả...)" className="text-sm px-3 py-2 rounded-lg border border-slate-200 outline-none focus:border-rose-400" value={newExamNote} onChange={e => setNewExamNote(e.target.value)} />
 
                                             <div className="flex justify-end gap-2 mt-1">
                                                 <button onClick={() => setShowAddExam(false)} className="text-xs font-bold text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded">Hủy</button>
@@ -1430,11 +1501,15 @@
                                                 return (
                                                     <div key={exam.id} className={`flex items-center justify-between p-3 rounded-xl border ${isUrgent ? 'bg-rose-50 border-rose-200' : isPast ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-slate-200'} group relative`}>
                                                         <div className="flex-1 min-w-0 pr-2">
-                                                            <h4 className={`text-sm font-bold truncate ${isUrgent ? 'text-rose-700' : 'text-slate-700'}`}>{exam.name}</h4>
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <h4 className={`text-sm font-bold truncate ${isUrgent ? 'text-rose-700' : 'text-slate-700'}`}>{exam.name}</h4>
+                                                                {exam.link && <a href={exam.link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-rose-400 hover:text-rose-600 flex-shrink-0" title="Mở link liên quan"><Icons.ArrowUpRight size={14} /></a>}
+                                                            </div>
                                                             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                                                                 <span className="flex items-center gap-1"><Icons.Calendar size={12} /> {formatDateLabel(exam.date)}</span>
                                                                 {exam.time && <span className="flex items-center gap-1"><Icons.Clock size={12} /> {exam.time}</span>}
                                                                 {exam.location && <span className="flex items-center gap-1 truncate"><Icons.MapPin size={12} /> {exam.location}</span>}
+                                                                {exam.note && <span className="flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold">{exam.note}</span>}
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-col items-end">
